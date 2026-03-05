@@ -1,0 +1,62 @@
+config-version: 7
+
+messages:
+  language: "zh_CN"
+
+storage:
+  # Options: sqlite, mysql
+  type: sqlite
+  mysql:
+    host: localhost
+    port: 3306
+    database: meoweco
+    username: root
+    password: password
+    use-ssl: false
+
+# Update Checker Settings
+update-checker:
+  enabled: true
+  # Check interval in hours
+  interval: 24
+  # Project slug on Modrinth
+  slug: "meoweco"
+
+# Default currency used for Vault and commands when no currency is specified
+default-currency: "coins"
+
+# Exchange rates (1 source currency = N target currency)
+exchange-rates:
+  enabled: true
+  coins:
+    points: 0.1  # 1 Coin = 0.1 Points
+    gems: 0.01   # 1 Coin = 0.01 Gems
+  points:
+    coins: 10.0  # 1 Point = 10 Coins
+  gems:
+    coins: 100.0     # 1 个 gems = 100 个 coins
+
+currencies:
+  coins:
+    display-name: "&e金币"
+    singular: "金币"
+    plural: "金币"
+    initial-balance: 100.0
+    # Decimal places for currency display (0-2)
+    decimal-places: 2
+    # Transfer tax rate (0.0 - 1.0), e.g. 0.05 for 5% tax
+    transfer-tax: 0.0
+  points:
+    display-name: "&b点券"
+    singular: "点券"
+    plural: "点券"
+    initial-balance: 0.0
+    decimal-places: 0
+    transfer-tax: 0.0
+  gems:
+    display-name: "&d宝石"
+    singular: "宝石"
+    plural: "宝石"
+    initial-balance: 0.0
+    decimal-places: 2
+    transfer-tax: 0.0

@@ -1,0 +1,64 @@
+name: MeowEco
+version: 26.6.9
+main: com.xiaoyiluck.meoweco.MeowEco
+description: A high-efficiency, lightweight economy plugin for Paper 1.21+ with Vault & Adventure support.
+load: STARTUP
+api-version: 1.13
+authors: [xiaoyiluck]
+softdepend: [Vault, PlaceholderAPI]
+permissions:
+  meoweco.admin:
+    description: Admin permission for MeowEco
+    default: op
+    children:
+      meoweco.balance.other: true
+      meoweco.take: true
+      meoweco.reload: true
+      meoweco.eco.give: true
+      meoweco.eco.take: true
+      meoweco.eco.set: true
+      meoweco.debug: true
+  meoweco.balance:
+    description: Check balance
+    default: true
+  meoweco.balance.other:
+    description: Check others' balance
+    default: op
+  meoweco.pay:
+    description: Pay others
+    default: true
+  meoweco.take:
+    description: Take money from others
+    default: op
+  meoweco.reload:
+    description: Reload MeowEco config and language files
+    default: op
+  meoweco.top:
+    description: View leaderboard
+    default: true
+  meoweco.eco.give:
+    description: Admin give money
+    default: op
+  meoweco.eco.take:
+    description: Admin take money
+    default: op
+  meoweco.eco.set:
+    description: Admin set balance
+    default: op
+  meoweco.debug:
+    description: Toggle debug mode
+    default: op
+commands:
+  meoweco:
+    description: Unified command for MeowEco
+    aliases: [meco, meow]
+  money:
+    description: Check balance
+    aliases: [balance, bal]
+  pay:
+    description: Pay others
+  baltop:
+    description: View leaderboard
+  eco:
+    description: Admin economy commands
+    aliases: [economy]
