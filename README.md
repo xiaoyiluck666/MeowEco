@@ -1,8 +1,9 @@
 # MeowEco - 现代 Minecraft 经济插件
 
-[![GitHub license](https://img.shields.io/github/license/xiaoyiluck/MeowEco)](https://github.com/xiaoyiluck/MeowEco/blob/main/LICENSE)
-[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/xiaoyiluck/MeowEco/gradle.yml?branch=main)](https://github.com/xiaoyiluck/MeowEco/actions)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/xiaoyiluck/MeowEco)](https://github.com/xiaoyiluck/MeowEco/releases)
+[![Modrinth Downloads](https://img.shields.io/modrinth/dt/meoweco?color=00AF5C&label=Modrinth%20Downloads)](https://modrinth.com/plugin/meoweco)
+[![GitHub license](https://img.shields.io/github/license/xiaoyiluck666/MeowEco)](https://github.com/xiaoyiluck666/MeowEco/blob/main/LICENSE)
+[![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/xiaoyiluck666/MeowEco/gradle.yml?branch=main)](https://github.com/xiaoyiluck666/MeowEco/actions)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/xiaoyiluck666/MeowEco)](https://github.com/xiaoyiluck666/MeowEco/releases)
 
 MeowEco 是一个**多货币支持**、**极致性能**且**高度兼容**的 Minecraft 经济插件，专为现代服务器设计。
 
