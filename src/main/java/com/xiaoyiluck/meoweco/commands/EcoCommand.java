@@ -175,6 +175,21 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        if (!Double.isFinite(amount)) {
+            sender.sendMessage(plugin.getConfigManager().getComponent("invalid-amount"));
+            return true;
+        }
+
+        if (sub.equals("set")) {
+            if (amount < 0) {
+                sender.sendMessage(plugin.getConfigManager().getComponent("invalid-amount"));
+                return true;
+            }
+        } else if (amount <= 0) {
+            sender.sendMessage(plugin.getConfigManager().getComponent("invalid-amount"));
+            return true;
+        }
+
         Currency currency = plugin.getDefaultCurrency();
         if (args.length >= 4) {
             currency = plugin.getCurrency(args[3]);

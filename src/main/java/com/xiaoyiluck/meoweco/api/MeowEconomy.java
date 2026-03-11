@@ -1,6 +1,7 @@
 package com.xiaoyiluck.meoweco.api;
 
 import com.xiaoyiluck.meoweco.MeowEco;
+import com.xiaoyiluck.meoweco.objects.Currency;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
@@ -23,6 +24,29 @@ public class MeowEconomy implements Economy {
         return MeowEco.getInstance();
     }
 
+    private Currency resolveDefaultCurrency(MeowEco plugin) {
+        Currency currency = plugin.getDefaultCurrency();
+        if (currency != null) {
+            return currency;
+        }
+        String currencyId = plugin.getDefaultCurrencyId();
+        if (currencyId != null && !currencyId.isBlank()) {
+            Currency configured = plugin.getCurrency(currencyId);
+            if (configured != null) {
+                return configured;
+            }
+        }
+        return new Currency("coins", "Coins", "Coin", "Coins", 0.0, 2, 0.0);
+    }
+
+    private String resolveDefaultCurrencyId(MeowEco plugin) {
+        String currencyId = plugin.getDefaultCurrencyId();
+        if (currencyId != null && !currencyId.isBlank()) {
+            return currencyId;
+        }
+        return resolveDefaultCurrency(plugin).getId();
+    }
+
     @Override
     public boolean isEnabled() {
         MeowEco plugin = getPlugin();
@@ -43,28 +67,29 @@ public class MeowEconomy implements Economy {
     public int fractionalDigits() {
         MeowEco plugin = getPlugin();
         if (plugin == null) return 2;
-        return plugin.getDefaultCurrency().getDecimalPlaces();
+        return resolveDefaultCurrency(plugin).getDecimalPlaces();
     }
 
     @Override
     public String format(double amount) {
         MeowEco plugin = getPlugin();
         if (plugin == null) return String.valueOf(amount);
-        return plugin.formatShort(amount, plugin.getDefaultCurrency()) + " " + currencyNamePlural();
+        Currency currency = resolveDefaultCurrency(plugin);
+        return plugin.formatShort(amount, currency) + " " + currency.getPlural();
     }
 
     @Override
     public String currencyNamePlural() {
         MeowEco plugin = getPlugin();
         if (plugin == null) return "Coins";
-        return plugin.getDefaultCurrency().getPlural();
+        return resolveDefaultCurrency(plugin).getPlural();
     }
 
     @Override
     public String currencyNameSingular() {
         MeowEco plugin = getPlugin();
         if (plugin == null) return "Coin";
-        return plugin.getDefaultCurrency().getSingular();
+        return resolveDefaultCurrency(plugin).getSingular();
     }
 
     @Override
@@ -77,8 +102,9 @@ public class MeowEconomy implements Economy {
     public boolean has(OfflinePlayer player, double amount) {
         if (!isEnabled()) return false;
         MeowEco plugin = getPlugin();
-        double total = plugin.getDatabaseManager().getBalance(player.getUniqueId(), plugin.getDefaultCurrencyId());
-        double frozen = plugin.getDatabaseManager().getFrozenBalance(player.getUniqueId(), plugin.getDefaultCurrencyId());
+        String currencyId = resolveDefaultCurrencyId(plugin);
+        double total = plugin.getDatabaseManager().getBalance(player.getUniqueId(), currencyId);
+        double frozen = plugin.getDatabaseManager().getFrozenBalance(player.getUniqueId(), currencyId);
         return (total - frozen) >= amount;
     }
 
@@ -102,7 +128,7 @@ public class MeowEconomy implements Economy {
     public boolean hasAccount(OfflinePlayer player) {
         if (!isEnabled()) return false;
         MeowEco plugin = getPlugin();
-        return plugin.getDatabaseManager().hasAccount(player.getUniqueId(), plugin.getDefaultCurrencyId());
+        return plugin.getDatabaseManager().hasAccount(player.getUniqueId(), resolveDefaultCurrencyId(plugin));
     }
 
     @Override
@@ -125,7 +151,7 @@ public class MeowEconomy implements Economy {
     public double getBalance(OfflinePlayer player) {
         if (!isEnabled()) return 0.0;
         MeowEco plugin = getPlugin();
-        return plugin.getDatabaseManager().getBalance(player.getUniqueId(), plugin.getDefaultCurrencyId());
+        return plugin.getDatabaseManager().getBalance(player.getUniqueId(), resolveDefaultCurrencyId(plugin));
     }
 
     @Override
@@ -148,7 +174,7 @@ public class MeowEconomy implements Economy {
     public boolean createPlayerAccount(OfflinePlayer player) {
         if (!isEnabled()) return false;
         MeowEco plugin = getPlugin();
-        com.xiaoyiluck.meoweco.objects.Currency def = plugin.getDefaultCurrency();
+        Currency def = resolveDefaultCurrency(plugin);
         return plugin.getDatabaseManager().createAccount(player.getUniqueId(), def.getId(), def.getInitialBalance());
     }
 
@@ -173,12 +199,12 @@ public class MeowEconomy implements Economy {
         if (!isEnabled()) {
             return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Plugin is disabled");
         }
-        if (amount < 0) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot withdraw negative amount");
+        if (!Double.isFinite(amount) || amount <= 0) {
+            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Amount must be greater than 0");
         }
         
         MeowEco plugin = getPlugin();
-        boolean success = plugin.getDatabaseManager().withdraw(player.getUniqueId(), plugin.getDefaultCurrencyId(), amount);
+        boolean success = plugin.getDatabaseManager().withdraw(player.getUniqueId(), resolveDefaultCurrencyId(plugin), amount);
         double balance = getBalance(player);
         
         if (success) {
@@ -209,13 +235,17 @@ public class MeowEconomy implements Economy {
         if (!isEnabled()) {
             return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Plugin is disabled");
         }
-        if (amount < 0) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Cannot deposit negative amount");
+        if (!Double.isFinite(amount) || amount <= 0) {
+            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Amount must be greater than 0");
         }
         
         MeowEco plugin = getPlugin();
-        plugin.getDatabaseManager().deposit(player.getUniqueId(), plugin.getDefaultCurrencyId(), amount);
-        return new EconomyResponse(amount, getBalance(player), EconomyResponse.ResponseType.SUCCESS, null);
+        boolean success = plugin.getDatabaseManager().deposit(player.getUniqueId(), resolveDefaultCurrencyId(plugin), amount);
+        double balance = getBalance(player);
+        if (success) {
+            return new EconomyResponse(amount, balance, EconomyResponse.ResponseType.SUCCESS, null);
+        }
+        return new EconomyResponse(0, balance, EconomyResponse.ResponseType.FAILURE, "Account not found or database error");
     }
 
     @Override

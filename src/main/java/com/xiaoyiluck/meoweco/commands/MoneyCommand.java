@@ -158,7 +158,7 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (amount <= 0) {
+        if (!Double.isFinite(amount) || amount <= 0) {
             sender.sendMessage(plugin.getConfigManager().getComponent("pay-failed-amount"));
             return true;
         }
@@ -172,12 +172,16 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
         }
 
         double rate = plugin.getExchangeRate(from.getId(), to.getId());
-        if (rate <= 0) {
+        if (rate <= 0 || !Double.isFinite(rate)) {
             sender.sendMessage(plugin.getConfigManager().getComponent("exchange-rate-not-set"));
             return true;
         }
 
         double resultAmount = amount * rate;
+        if (!Double.isFinite(resultAmount) || resultAmount <= 0) {
+            sender.sendMessage(plugin.getConfigManager().getComponent("invalid-amount"));
+            return true;
+        }
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             if (!plugin.getDatabaseManager().hasAccount(player.getUniqueId(), from.getId())) {
@@ -187,27 +191,35 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
                 plugin.getDatabaseManager().createAccount(player.getUniqueId(), to.getId(), to.getInitialBalance());
             }
 
-            boolean success = plugin.getDatabaseManager().withdraw(player.getUniqueId(), from.getId(), amount);
-            if (success) {
-                plugin.getDatabaseManager().deposit(player.getUniqueId(), to.getId(), resultAmount);
-                
-                // Invalidate baltop cache
-                if (plugin.getBaltopCommand() != null) {
-                    plugin.getBaltopCommand().invalidateCache();
-                }
-                
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage(plugin.getConfigManager().getComponent("exchange-success")
-                            .replaceText(config -> config.matchLiteral("%from_amount%").replacement(plugin.formatShort(amount, from)))
-                            .replaceText(config -> config.matchLiteral("%from_currency%").replacement(plugin.getConfigManager().parseColor(from.getDisplayName())))
-                            .replaceText(config -> config.matchLiteral("%to_amount%").replacement(plugin.formatShort(resultAmount, to)))
-                            .replaceText(config -> config.matchLiteral("%to_currency%").replacement(plugin.getConfigManager().parseColor(to.getDisplayName()))));
-                });
-            } else {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage(plugin.getConfigManager().getComponent("pay-failed-balance"));
-                });
+            boolean withdrew = plugin.getDatabaseManager().withdraw(player.getUniqueId(), from.getId(), amount);
+            if (!withdrew) {
+                plugin.getServer().getScheduler().runTask(plugin, () -> sender.sendMessage(plugin.getConfigManager().getComponent("pay-failed-balance")));
+                return;
             }
+
+            boolean deposited = plugin.getDatabaseManager().deposit(player.getUniqueId(), to.getId(), resultAmount);
+            if (!deposited) {
+                boolean rolledBack = plugin.getDatabaseManager().deposit(player.getUniqueId(), from.getId(), amount);
+                if (!rolledBack) {
+                    plugin.getLogger().severe("Exchange rollback failed for player " + player.getUniqueId() + ", from=" + from.getId() + ", to=" + to.getId() + ", amount=" + amount + ", result=" + resultAmount);
+                }
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    sender.sendMessage(Component.text("§c兑换失败：入账异常，已尝试回滚，请联系管理员。"));
+                });
+                return;
+            }
+
+            if (plugin.getBaltopCommand() != null) {
+                plugin.getBaltopCommand().invalidateCache();
+            }
+
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                sender.sendMessage(plugin.getConfigManager().getComponent("exchange-success")
+                        .replaceText(config -> config.matchLiteral("%from_amount%").replacement(plugin.formatShort(amount, from)))
+                        .replaceText(config -> config.matchLiteral("%from_currency%").replacement(plugin.getConfigManager().parseColor(from.getDisplayName())))
+                        .replaceText(config -> config.matchLiteral("%to_amount%").replacement(plugin.formatShort(resultAmount, to)))
+                        .replaceText(config -> config.matchLiteral("%to_currency%").replacement(plugin.getConfigManager().parseColor(to.getDisplayName()))));
+            });
         });
 
         return true;

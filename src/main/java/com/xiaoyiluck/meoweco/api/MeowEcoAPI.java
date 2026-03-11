@@ -51,7 +51,7 @@ public interface MeowEcoAPI {
      *
      * @param uuid The UUID of the player.
      * @param currencyId The ID of the currency.
-     * @param amount The amount to deposit.
+     * @param amount The amount to deposit. Must be a finite value greater than 0.
      * @return {@code true} if successful.
      */
     boolean deposit(java.util.UUID uuid, String currencyId, double amount);
@@ -61,7 +61,7 @@ public interface MeowEcoAPI {
      *
      * @param uuid The UUID of the player.
      * @param currencyId The ID of the currency.
-     * @param amount The amount to withdraw.
+     * @param amount The amount to withdraw. Must be a finite value greater than 0.
      * @return {@code true} if successful, {@code false} if insufficient funds.
      */
     boolean withdraw(java.util.UUID uuid, String currencyId, double amount);
@@ -90,7 +90,7 @@ public interface MeowEcoAPI {
      *
      * @param uuid The UUID of the player.
      * @param currencyId The ID of the currency.
-     * @param amount The amount to freeze.
+     * @param amount The amount to freeze. Must be a finite value greater than 0.
      * @return {@code true} if successful, {@code false} if insufficient available funds.
      */
     boolean freeze(java.util.UUID uuid, String currencyId, double amount);
@@ -100,7 +100,7 @@ public interface MeowEcoAPI {
      *
      * @param uuid The UUID of the player.
      * @param currencyId The ID of the currency.
-     * @param amount The amount to unfreeze.
+     * @param amount The amount to unfreeze. Must be a finite value greater than 0.
      * @return {@code true} if successful, {@code false} if insufficient frozen funds.
      */
     boolean unfreeze(java.util.UUID uuid, String currencyId, double amount);
@@ -111,7 +111,7 @@ public interface MeowEcoAPI {
      *
      * @param uuid The UUID of the player.
      * @param currencyId The ID of the currency.
-     * @param amount The amount to deduct.
+     * @param amount The amount to deduct. Must be a finite value greater than 0.
      * @return {@code true} if successful, {@code false} if insufficient frozen funds.
      */
     boolean deductFrozen(java.util.UUID uuid, String currencyId, double amount);

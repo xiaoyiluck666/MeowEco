@@ -24,6 +24,10 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
         return plugin.getCurrency(id);
     }
 
+    private boolean isPositiveFinite(double amount) {
+        return Double.isFinite(amount) && amount > 0.0;
+    }
+
     @Override
     public double getBalance(java.util.UUID uuid, String currencyId) {
         return plugin.getDatabaseManager().getBalance(uuid, currencyId);
@@ -31,11 +35,17 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
 
     @Override
     public boolean deposit(java.util.UUID uuid, String currencyId, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         return plugin.getDatabaseManager().deposit(uuid, currencyId, amount);
     }
 
     @Override
     public boolean withdraw(java.util.UUID uuid, String currencyId, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         return plugin.getDatabaseManager().withdraw(uuid, currencyId, amount);
     }
 
@@ -53,16 +63,25 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
 
     @Override
     public boolean freeze(java.util.UUID uuid, String currencyId, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         return plugin.getDatabaseManager().freeze(uuid, currencyId, amount);
     }
 
     @Override
     public boolean unfreeze(java.util.UUID uuid, String currencyId, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         return plugin.getDatabaseManager().unfreeze(uuid, currencyId, amount);
     }
 
     @Override
     public boolean deductFrozen(java.util.UUID uuid, String currencyId, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         return plugin.getDatabaseManager().deductFrozen(uuid, currencyId, amount);
     }
 }

@@ -11,20 +11,26 @@ import org.bukkit.command.TabCompleter;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class BaltopCommand implements CommandExecutor, TabCompleter {
 
     private final MeowEco plugin;
-    private final Map<String, CacheEntry> cache = new HashMap<>();
+    private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
     private static final long CACHE_TTL = 300000; // 5 minutes
 
     private static class CacheEntry {
-        Map<String, Double> top;
-        double total;
-        long timestamp;
+        private final Map<String, Double> top;
+        private final double total;
+        private final long timestamp;
+
+        private CacheEntry(Map<String, Double> top, double total, long timestamp) {
+            this.top = top;
+            this.total = total;
+            this.timestamp = timestamp;
+        }
     }
 
     public BaltopCommand(MeowEco plugin) {
@@ -72,10 +78,7 @@ public class BaltopCommand implements CommandExecutor, TabCompleter {
             double total = plugin.getDatabaseManager().getTotalBalance(finalCurrency.getId());
             
             // Update cache
-            CacheEntry newEntry = new CacheEntry();
-            newEntry.top = top;
-            newEntry.total = total;
-            newEntry.timestamp = System.currentTimeMillis();
+            CacheEntry newEntry = new CacheEntry(top, total, System.currentTimeMillis());
             this.cache.put(finalCurrency.getId(), newEntry);
             
             // Switch back to main thread for sending messages
