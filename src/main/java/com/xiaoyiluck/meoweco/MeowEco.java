@@ -10,6 +10,7 @@ import com.xiaoyiluck.meoweco.database.MySQLDatabase;
 import com.xiaoyiluck.meoweco.database.SQLiteDatabase;
 import com.xiaoyiluck.meoweco.hooks.MeowEcoPlaceholders;
 import com.xiaoyiluck.meoweco.listeners.PlayerListener;
+import com.xiaoyiluck.meoweco.tax.RichTaxService;
 import com.xiaoyiluck.meoweco.utils.ConfigManager;
 import com.xiaoyiluck.meoweco.utils.UpdateChecker;
 import com.xiaoyiluck.meoweco.objects.Currency;
@@ -24,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public class MeowEco extends JavaPlugin {
+    private static final String FALLBACK_CURRENCY_ID = "coins";
 
     private static MeowEco instance;
     private DatabaseManager databaseManager;
@@ -32,6 +34,7 @@ public class MeowEco extends JavaPlugin {
     private BaltopCommand baltopCommand;
     private MeowEcoPlaceholders placeholders;
     private UpdateChecker updateChecker;
+    private RichTaxService richTaxService;
     private boolean updateAvailable = false;
     
     private final Map<String, Currency> currencies = new HashMap<>();
@@ -59,6 +62,9 @@ public class MeowEco extends JavaPlugin {
             databaseManager = new SQLiteDatabase(this);
         }
         databaseManager.init();
+
+        richTaxService = new RichTaxService(this);
+        richTaxService.reload();
 
         // Register Vault Economy
         if (getServer().getPluginManager().getPlugin("Vault") != null) {
@@ -115,6 +121,10 @@ public class MeowEco extends JavaPlugin {
         if (getConfig().getBoolean("update-checker.enabled", true)) {
             this.updateChecker = new UpdateChecker(this);
             int intervalHours = getConfig().getInt("update-checker.interval", 24);
+            if (intervalHours <= 0) {
+                getLogger().warning("Invalid update-checker.interval: " + intervalHours + ". Falling back to 24 hours.");
+                intervalHours = 24;
+            }
             long ticks = intervalHours * 60L * 60L * 20L;
             
             getServer().getScheduler().runTaskTimerAsynchronously(this, () -> {
@@ -146,6 +156,11 @@ public class MeowEco extends JavaPlugin {
             placeholders = null;
         }
         
+        if (richTaxService != null) {
+            richTaxService.stop();
+            richTaxService = null;
+        }
+
         if (databaseManager != null) {
             databaseManager.close();
         }
@@ -167,6 +182,9 @@ public class MeowEco extends JavaPlugin {
         configManager.reloadMessages();
         loadCurrencies();
         loadExchangeRates();
+        if (richTaxService != null) {
+            richTaxService.reload();
+        }
         if (baltopCommand != null) {
             baltopCommand.invalidateCache();
         }
@@ -180,15 +198,9 @@ public class MeowEco extends JavaPlugin {
         ConfigurationSection section = getConfig().getConfigurationSection("currencies");
         if (section == null) {
             // Fallback for legacy config
-            String singular = getConfig().getString("currency.singular", "Coin");
-            String plural = getConfig().getString("currency.plural", "Coins");
-            double initial = getConfig().getDouble("currency.initial-balance", 100.0);
-            int decimal = getConfig().getInt("currency.decimal-places", 2);
-            double tax = getConfig().getDouble("currency.transfer-tax", 0.0);
-            
-            Currency coins = new Currency("coins", "Coins", singular, plural, initial, decimal, tax);
-            currencies.put("coins", coins);
-            defaultCurrencyId = "coins";
+            Currency fallbackCurrency = createFallbackCurrency();
+            currencies.put(fallbackCurrency.getId(), fallbackCurrency);
+            defaultCurrencyId = fallbackCurrency.getId();
             return;
         }
 
@@ -208,11 +220,27 @@ public class MeowEco extends JavaPlugin {
             debug("Loaded currency: " + id + " (Name: " + displayName + ", Initial: " + initial + ")");
         }
 
-        defaultCurrencyId = getConfig().getString("default-currency", "coins");
-        if (!currencies.containsKey(defaultCurrencyId) && !currencies.isEmpty()) {
+        if (currencies.isEmpty()) {
+            Currency fallbackCurrency = createFallbackCurrency();
+            currencies.put(fallbackCurrency.getId(), fallbackCurrency);
+            getLogger().warning("No valid currencies were loaded from config. Added fallback currency '" + fallbackCurrency.getId() + "'.");
+        }
+
+        defaultCurrencyId = getConfig().getString("default-currency", FALLBACK_CURRENCY_ID);
+        if (defaultCurrencyId == null || defaultCurrencyId.isBlank() || !currencies.containsKey(defaultCurrencyId)) {
+            getLogger().warning("Configured default-currency is invalid: '" + defaultCurrencyId + "'. Using first available currency.");
             defaultCurrencyId = currencies.keySet().iterator().next();
         }
         debug("Default currency set to: " + defaultCurrencyId);
+    }
+
+    private Currency createFallbackCurrency() {
+        String singular = getConfig().getString("currency.singular", "Coin");
+        String plural = getConfig().getString("currency.plural", "Coins");
+        double initial = getConfig().getDouble("currency.initial-balance", 100.0);
+        int decimal = getConfig().getInt("currency.decimal-places", 2);
+        double tax = getConfig().getDouble("currency.transfer-tax", 0.0);
+        return new Currency(FALLBACK_CURRENCY_ID, "Coins", singular, plural, initial, decimal, tax);
     }
 
     private void loadExchangeRates() {
@@ -352,11 +380,27 @@ public class MeowEco extends JavaPlugin {
     }
 
     public String getDefaultCurrencyId() {
+        if (defaultCurrencyId == null || !currencies.containsKey(defaultCurrencyId)) {
+            return getDefaultCurrency().getId();
+        }
         return defaultCurrencyId;
     }
 
     public Currency getDefaultCurrency() {
-        return currencies.get(defaultCurrencyId);
+        Currency currency = defaultCurrencyId == null ? null : currencies.get(defaultCurrencyId);
+        if (currency != null) {
+            return currency;
+        }
+        if (!currencies.isEmpty()) {
+            defaultCurrencyId = currencies.keySet().iterator().next();
+            return currencies.get(defaultCurrencyId);
+        }
+
+        Currency fallback = createFallbackCurrency();
+        currencies.put(fallback.getId(), fallback);
+        defaultCurrencyId = fallback.getId();
+        getLogger().warning("Currency map is empty at runtime. Auto-restored fallback currency '" + fallback.getId() + "'.");
+        return fallback;
     }
 
     public String formatBalance(double amount, Currency currency) {

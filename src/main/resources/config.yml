@@ -1,50 +1,83 @@
-config-version: 7
+config-version: 8
 
+# Message language / 消息语言
 messages:
   language: "zh_CN"
 
+# Storage settings / 存储设置
 storage:
-  # Options: sqlite, mysql
+  # Available options: sqlite, mysql / 可选项：sqlite, mysql
   type: sqlite
   mysql:
+    # MySQL host / MySQL 地址
     host: localhost
+    # MySQL port / MySQL 端口
     port: 3306
+    # Database name / 数据库名
     database: meoweco
+    # Database username / 数据库用户名
     username: root
+    # Database password / 数据库密码
     password: password
+    # Enable SSL or not / 是否启用 SSL
     use-ssl: false
 
-# Update Checker Settings
+# Update checker settings / 更新检查设置
 update-checker:
+  # Enable update checking / 是否启用更新检查
   enabled: true
-  # Check interval in hours
+  # Check interval in hours / 检查间隔（小时）
   interval: 24
-  # Project slug on Modrinth
+  # Modrinth project slug / Modrinth 项目标识
   slug: "meoweco"
 
-# Default currency used for Vault and commands when no currency is specified
+# Default currency used by Vault and commands / Vault 与默认命令使用的默认货币
 default-currency: "coins"
 
-# Exchange rates (1 source currency = N target currency)
+# Exchange rates (1 source currency = N target currency) / 汇率（1 个源货币 = N 个目标货币）
 exchange-rates:
+  # Enable currency exchange / 是否启用货币兑换
   enabled: true
   coins:
-    points: 0.1  # 1 Coin = 0.1 Points
-    gems: 0.01   # 1 Coin = 0.01 Gems
+    points: 0.1  # 1 Coin = 0.1 Points / 1 金币 = 0.1 点券
+    gems: 0.01   # 1 Coin = 0.01 Gems / 1 金币 = 0.01 宝石
   points:
-    coins: 10.0  # 1 Point = 10 Coins
+    coins: 10.0  # 1 Point = 10 Coins / 1 点券 = 10 金币
   gems:
-    coins: 100.0     # 1 个 gems = 100 个 coins
+    coins: 100.0 # 1 Gem = 100 Coins / 1 宝石 = 100 金币
 
+# Rich tax settings / 富人税设置
+rich-tax:
+  # Enable periodic rich tax / 是否启用周期性富人税
+  enabled: false
+  # Only the amount above this balance is taxed / 仅对超过此余额的部分征税
+  threshold: 100000.0
+  # Tax rate applied to the taxable portion / 对超出部分应用的税率
+  rate: 0.05
+  # First execution anchor time (server local time, HH:mm) / 首次执行锚点时间（服务器本地时间，HH:mm）
+  start-time: "03:00"
+  # Execution interval, supports s/m/h/d, plain numbers mean minutes / 执行间隔，支持 s/m/h/d，纯数字按分钟处理
+  interval: "24h"
+  destination:
+    # system = confiscated by system, player = sent to a player / system = 系统没收，player = 转入指定玩家账户
+    type: "system"
+    # Target player when type is player / 当 type 为 player 时的目标玩家
+    player: "Admin"
+
+# Currency definitions / 货币定义
 currencies:
   coins:
+    # Display name with color support / 显示名称，支持颜色代码
     display-name: "&e金币"
+    # Singular currency name / 单数货币名
     singular: "金币"
+    # Plural currency name / 复数货币名
     plural: "金币"
+    # Initial balance for new players / 新玩家初始余额
     initial-balance: 100.0
-    # Decimal places for currency display (0-2)
+    # Decimal places for display (0-2) / 显示小数位（0-2）
     decimal-places: 2
-    # Transfer tax rate (0.0 - 1.0), e.g. 0.05 for 5% tax
+    # Transfer tax rate (0.0 - 1.0) / 转账税率（0.0 - 1.0）
     transfer-tax: 0.0
   points:
     display-name: "&b点券"

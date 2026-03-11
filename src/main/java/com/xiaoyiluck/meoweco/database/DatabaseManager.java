@@ -26,6 +26,7 @@ public interface DatabaseManager {
     void updatePlayerName(UUID uuid, String name);
 
     Map<String, Double> getTopAccounts(String currency, int limit);
+    Map<UUID, Double> getAccountsAboveBalance(String currency, double minimumBalance);
     double getTotalBalance(String currency);
     
     void setHidden(UUID uuid, boolean hidden);

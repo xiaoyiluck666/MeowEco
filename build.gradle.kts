@@ -2,11 +2,11 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 
 plugins {
     java
-    id("io.github.goooler.shadow") version "8.1.8"
+    id("com.gradleup.shadow") version "8.3.9"
 }
 
 group = "com.xiaoyiluck"
-version = "26.7.0"
+version = "26.7.1"
 
 repositories {
     mavenCentral()

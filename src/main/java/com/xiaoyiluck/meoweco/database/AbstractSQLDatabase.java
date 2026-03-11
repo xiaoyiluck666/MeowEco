@@ -192,6 +192,14 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         return dataSource.getConnection();
     }
 
+    private boolean isPositiveFinite(double amount) {
+        return Double.isFinite(amount) && amount > 0.0;
+    }
+
+    private boolean isNonNegativeFinite(double amount) {
+        return Double.isFinite(amount) && amount >= 0.0;
+    }
+
     @Override
     public boolean hasAccount(UUID uuid, String currency) {
         String sql = "SELECT 1 FROM " + tableName + " WHERE uuid = ? AND currency = ?";
@@ -256,7 +264,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         } catch (SQLException e) {
             // If it's a primary key/unique constraint violation, it means the account was created by another thread/process
             // between our hasAccount check and this insert. We can safely ignore this.
-            if (e.getErrorCode() == 19 || e.getSQLState().equals("23000") || e.getMessage().contains("UNIQUE") || e.getMessage().contains("PRIMARY")) {
+            if (e.getErrorCode() == 19 || "23000".equals(e.getSQLState()) || e.getMessage().contains("UNIQUE") || e.getMessage().contains("PRIMARY")) {
                 return false;
             }
             if (!e.getMessage().contains("DataSource is closed") && !e.getMessage().contains("has been closed")) {
@@ -288,6 +296,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public boolean deposit(UUID uuid, String currency, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         String sql = "UPDATE " + tableName + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -328,6 +339,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public boolean withdraw(UUID uuid, String currency, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         String sql = "UPDATE " + tableName + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -352,6 +366,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public boolean transfer(UUID from, UUID to, String currency, double withdrawAmount, double depositAmount) {
+        if (!isPositiveFinite(withdrawAmount) || !isNonNegativeFinite(depositAmount)) {
+            return false;
+        }
         String withdrawSql = "UPDATE " + tableName + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
         String depositSql = "UPDATE " + tableName + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
         
@@ -437,6 +454,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public boolean freeze(UUID uuid, String currency, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         // We can only freeze what we have (available balance)
         String sql = "UPDATE " + tableName + " SET frozen_balance = frozen_balance + ? WHERE uuid = ? AND currency = ? AND (balance - frozen_balance) >= ?";
         try (Connection conn = getConnection();
@@ -456,6 +476,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public boolean unfreeze(UUID uuid, String currency, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         // We can only unfreeze what is frozen
         String sql = "UPDATE " + tableName + " SET frozen_balance = frozen_balance - ? WHERE uuid = ? AND currency = ? AND frozen_balance >= ?";
         try (Connection conn = getConnection();
@@ -475,6 +498,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public boolean deductFrozen(UUID uuid, String currency, double amount) {
+        if (!isPositiveFinite(amount)) {
+            return false;
+        }
         // Deduct from both total balance and frozen balance
         String sql = "UPDATE " + tableName + " SET balance = balance - ?, frozen_balance = frozen_balance - ? WHERE uuid = ? AND currency = ? AND frozen_balance >= ? AND balance >= ?";
         try (Connection conn = getConnection();
@@ -533,6 +559,32 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         }
         plugin.debug("getTopAccounts returned " + top.size() + " entries.");
         return top;
+    }
+
+    @Override
+    public Map<UUID, Double> getAccountsAboveBalance(String currency, double minimumBalance) {
+        Map<UUID, Double> accounts = new LinkedHashMap<>();
+        String sql = "SELECT uuid, (balance - frozen_balance) AS available_balance FROM " + tableName
+                + " WHERE currency = ? AND username <> 'tax' AND (balance - frozen_balance) > ?"
+                + " ORDER BY available_balance DESC";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, currency);
+            ps.setDouble(2, minimumBalance);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    try {
+                        accounts.put(UUID.fromString(rs.getString("uuid")), rs.getDouble("available_balance"));
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            if (!e.getMessage().contains("DataSource is closed") && !e.getMessage().contains("has been closed")) {
+                e.printStackTrace();
+            }
+        }
+        return accounts;
     }
 
     @Override
