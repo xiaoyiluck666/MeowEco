@@ -247,8 +247,8 @@ public class MeowEcoPlaceholders extends PlaceholderExpansion {
                     return;
                 }
                 long now = System.currentTimeMillis();
-                double balance = plugin.getDatabaseManager().getBalance(uuid, currencyId);
-                double frozen = plugin.getDatabaseManager().getFrozenBalance(uuid, currencyId);
+                double balance = plugin.getDatabaseManager().findBalance(uuid, currencyId).orElse(0.0D);
+                double frozen = plugin.getDatabaseManager().findFrozenBalance(uuid, currencyId).orElse(0.0D);
                 balanceCache.put(cacheKey, new CachedBalance(balance, frozen, now));
             } finally {
                 balanceRefreshInFlight.remove(cacheKey);

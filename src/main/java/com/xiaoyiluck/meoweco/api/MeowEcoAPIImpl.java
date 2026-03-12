@@ -30,7 +30,7 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
 
     @Override
     public double getBalance(java.util.UUID uuid, String currencyId) {
-        return plugin.getDatabaseManager().getBalance(uuid, currencyId);
+        return plugin.getDatabaseManager().findBalance(uuid, currencyId).orElse(0.0D);
     }
 
     @Override
@@ -51,13 +51,13 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
 
     @Override
     public double getFrozenBalance(java.util.UUID uuid, String currencyId) {
-        return plugin.getDatabaseManager().getFrozenBalance(uuid, currencyId);
+        return plugin.getDatabaseManager().findFrozenBalance(uuid, currencyId).orElse(0.0D);
     }
 
     @Override
     public double getAvailableBalance(java.util.UUID uuid, String currencyId) {
-        double total = plugin.getDatabaseManager().getBalance(uuid, currencyId);
-        double frozen = plugin.getDatabaseManager().getFrozenBalance(uuid, currencyId);
+        double total = plugin.getDatabaseManager().findBalance(uuid, currencyId).orElse(0.0D);
+        double frozen = plugin.getDatabaseManager().findFrozenBalance(uuid, currencyId).orElse(0.0D);
         return total - frozen;
     }
 

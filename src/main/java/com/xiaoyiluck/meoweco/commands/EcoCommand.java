@@ -220,8 +220,7 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                     msgKey = "eco-take";
                     break;
                 case "set":
-                    plugin.getDatabaseManager().setBalance(finalTarget.getUniqueId(), finalCurrency.getId(), finalAmount);
-                    success = true; // setBalance is void for now
+                    success = plugin.getDatabaseManager().updateBalance(finalTarget.getUniqueId(), finalCurrency.getId(), finalAmount);
                     msgKey = "eco-set";
                     break;
                 case "freeze":

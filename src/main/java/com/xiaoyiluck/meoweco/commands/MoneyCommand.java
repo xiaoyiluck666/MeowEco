@@ -114,8 +114,8 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
                  return;
             }
 
-            double balance = plugin.getDatabaseManager().getBalance(finalTarget.getUniqueId(), finalCurrency.getId());
-            double frozen = plugin.getDatabaseManager().getFrozenBalance(finalTarget.getUniqueId(), finalCurrency.getId());
+            double balance = plugin.getDatabaseManager().findBalance(finalTarget.getUniqueId(), finalCurrency.getId()).orElse(0.0D);
+            double frozen = plugin.getDatabaseManager().findFrozenBalance(finalTarget.getUniqueId(), finalCurrency.getId()).orElse(0.0D);
             
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 String targetName = finalTarget.getName();

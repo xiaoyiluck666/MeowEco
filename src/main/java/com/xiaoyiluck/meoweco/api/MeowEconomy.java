@@ -9,6 +9,7 @@ import org.bukkit.OfflinePlayer;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 public class MeowEconomy implements Economy {
 
@@ -45,6 +46,14 @@ public class MeowEconomy implements Economy {
             return currencyId;
         }
         return resolveDefaultCurrency(plugin).getId();
+    }
+
+    private double getStoredBalance(MeowEco plugin, UUID uuid, String currencyId) {
+        return plugin.getDatabaseManager().findBalance(uuid, currencyId).orElse(0.0D);
+    }
+
+    private double getStoredFrozenBalance(MeowEco plugin, UUID uuid, String currencyId) {
+        return plugin.getDatabaseManager().findFrozenBalance(uuid, currencyId).orElse(0.0D);
     }
 
     @Override
@@ -103,8 +112,8 @@ public class MeowEconomy implements Economy {
         if (!isEnabled()) return false;
         MeowEco plugin = getPlugin();
         String currencyId = resolveDefaultCurrencyId(plugin);
-        double total = plugin.getDatabaseManager().getBalance(player.getUniqueId(), currencyId);
-        double frozen = plugin.getDatabaseManager().getFrozenBalance(player.getUniqueId(), currencyId);
+        double total = getStoredBalance(plugin, player.getUniqueId(), currencyId);
+        double frozen = getStoredFrozenBalance(plugin, player.getUniqueId(), currencyId);
         return (total - frozen) >= amount;
     }
 
@@ -151,7 +160,7 @@ public class MeowEconomy implements Economy {
     public double getBalance(OfflinePlayer player) {
         if (!isEnabled()) return 0.0;
         MeowEco plugin = getPlugin();
-        return plugin.getDatabaseManager().getBalance(player.getUniqueId(), resolveDefaultCurrencyId(plugin));
+        return getStoredBalance(plugin, player.getUniqueId(), resolveDefaultCurrencyId(plugin));
     }
 
     @Override
