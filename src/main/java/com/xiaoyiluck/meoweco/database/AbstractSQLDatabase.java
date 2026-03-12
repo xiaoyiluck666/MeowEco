@@ -629,14 +629,26 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public void setHidden(UUID uuid, boolean hidden) {
-        String sql = "UPDATE " + getTableName() + " SET hidden = ? WHERE uuid = ?";
+        updateHidden(uuid, null, hidden);
+    }
+
+    @Override
+    public boolean updateHidden(UUID uuid, String username, boolean hidden) {
+        boolean hasUsername = username != null && !username.isBlank();
+        String sql = hasUsername
+                ? "UPDATE " + getTableName() + " SET hidden = ? WHERE uuid = ? OR LOWER(username) = LOWER(?)"
+                : "UPDATE " + getTableName() + " SET hidden = ? WHERE uuid = ?";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, hidden ? 1 : 0);
             ps.setString(2, uuid.toString());
-            ps.executeUpdate();
+            if (hasUsername) {
+                ps.setString(3, username);
+            }
+            return ps.executeUpdate() > 0;
         } catch (SQLException e) {
             logSqlError("SetHidden error", e);
+            return false;
         }
     }
 

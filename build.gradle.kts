@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.xiaoyiluck"
-version = "26.7.1"
+version = "26.7.2"
 
 repositories {
     mavenCentral()

@@ -116,26 +116,27 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(plugin.getConfigManager().getComponent("eco-hide-usage"));
                 return true;
             }
-            OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+            String targetName = args[1];
+            OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
             boolean hidden = sub.equals("hide");
             plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                 // Hide for all currencies
-                 for (Currency c : plugin.getCurrencies().values()) {
-                     if (!plugin.getDatabaseManager().hasAccount(target.getUniqueId(), c.getId())) {
-                         plugin.getDatabaseManager().createAccount(target.getUniqueId(), c.getId(), 0);
-                     }
-                 }
-                 plugin.getDatabaseManager().setHidden(target.getUniqueId(), hidden);
-                 
-                 // Invalidate cache so change is seen
-                 if (plugin.getBaltopCommand() != null) {
-                     plugin.getBaltopCommand().invalidateCache();
-                 }
-                 
+                 boolean updated = plugin.getDatabaseManager().updateHidden(target.getUniqueId(), targetName, hidden);
                  plugin.getServer().getScheduler().runTask(plugin, () -> {
+                     if (!updated) {
+                         sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
+                         return;
+                     }
+
+                     if (plugin.getBaltopCommand() != null) {
+                         plugin.getBaltopCommand().invalidateCache();
+                     }
+                     if (plugin.getPlaceholders() != null) {
+                         plugin.getPlaceholders().invalidateCache();
+                     }
+
                      String key = hidden ? "eco-hide-success" : "eco-unhide-success";
                      sender.sendMessage(plugin.getConfigManager().getComponent(key)
-                             .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(target.getName() != null ? target.getName() : "Unknown").build()));
+                             .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(target.getName() != null ? target.getName() : targetName).build()));
                  });
             });
             return true;

@@ -51,6 +51,12 @@ public interface DatabaseManager {
     double getTotalBalance(String currency);
 
     void setHidden(UUID uuid, boolean hidden);
+
+    default boolean updateHidden(UUID uuid, String username, boolean hidden) {
+        setHidden(uuid, hidden);
+        return true;
+    }
+
     boolean isHidden(UUID uuid);
 
     Map<UUID, String> getUnknownAccounts();

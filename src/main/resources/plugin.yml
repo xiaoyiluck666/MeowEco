@@ -1,5 +1,5 @@
 name: MeowEco
-version: 26.7.1
+version: 26.7.2
 main: com.xiaoyiluck.meoweco.MeowEco
 description: A high-efficiency, lightweight economy plugin for Paper 1.21+ with Vault & Adventure support.
 load: STARTUP
