@@ -2,6 +2,7 @@ package com.xiaoyiluck.meoweco.commands;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
 import org.bukkit.Bukkit;
@@ -36,7 +37,11 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        OfflinePlayer target = Bukkit.getOfflinePlayer(args[0]);
+        OfflinePlayer target = PlayerLookup.resolveOfflinePlayer(plugin, args[0]).orElse(null);
+        if (target == null) {
+            sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
+            return true;
+        }
         String senderName = sender instanceof Player ? ((Player) sender).getName() : "Console";
 
         double amount;
@@ -63,7 +68,8 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
 
         final double finalAmount = amount;
         final Currency finalCurrency = currency;
-        
+        final String targetName = PlayerLookup.getDisplayName(target, args[0]);
+
         // Pre-fetch components
         Component playerNotFound = plugin.getConfigManager().getComponent("player-not-found");
         Component senderMsgTemplate = plugin.getConfigManager().getComponent("take-success-sender");
@@ -89,17 +95,20 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
                 }
 
                 Component senderMsg = senderMsgTemplate
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(target.getName() != null ? target.getName() : "Unknown").build())
+                        .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(targetName).build())
                         .replaceText(TextReplacementConfig.builder().matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)).build())
                         .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())).build());
                 sender.sendMessage(senderMsg);
 
                 if (target.isOnline()) {
-                    Component receiverMsg = receiverMsgTemplate
-                            .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(senderName).build())
-                            .replaceText(TextReplacementConfig.builder().matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)).build())
-                            .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())).build());
-                    ((Player) target).sendMessage(receiverMsg);
+                    Player targetPlayer = target.getPlayer();
+                    if (targetPlayer != null) {
+                        Component receiverMsg = receiverMsgTemplate
+                                .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(senderName).build())
+                                .replaceText(TextReplacementConfig.builder().matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)).build())
+                                .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())).build());
+                        targetPlayer.sendMessage(receiverMsg);
+                    }
                 }
             });
         });

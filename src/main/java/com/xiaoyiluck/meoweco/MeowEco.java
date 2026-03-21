@@ -24,6 +24,8 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 
+import java.util.Collections;
+
 public class MeowEco extends JavaPlugin {
     private static final String FALLBACK_CURRENCY_ID = "coins";
 
@@ -194,43 +196,51 @@ public class MeowEco extends JavaPlugin {
     }
 
     private void loadCurrencies() {
-        currencies.clear();
+        Map<String, Currency> loadedCurrencies = new HashMap<>();
         ConfigurationSection section = getConfig().getConfigurationSection("currencies");
         if (section == null) {
-            // Fallback for legacy config
             Currency fallbackCurrency = createFallbackCurrency();
-            currencies.put(fallbackCurrency.getId(), fallbackCurrency);
-            defaultCurrencyId = fallbackCurrency.getId();
-            return;
+            loadedCurrencies.put(fallbackCurrency.getId().toLowerCase(Locale.ROOT), fallbackCurrency);
+        } else {
+            for (String rawId : section.getKeys(false)) {
+                ConfigurationSection currSection = section.getConfigurationSection(rawId);
+                if (currSection == null) {
+                    continue;
+                }
+
+                String id = rawId.toLowerCase(Locale.ROOT);
+                String displayName = currSection.getString("display-name", id);
+                String singular = currSection.getString("singular", "Coin");
+                String plural = currSection.getString("plural", "Coins");
+                double initial = currSection.getDouble("initial-balance", 0.0);
+                int decimal = currSection.getInt("decimal-places", 2);
+                double tax = currSection.getDouble("transfer-tax", 0.0);
+
+                Currency currency = new Currency(id, displayName, singular, plural, initial, decimal, tax);
+                loadedCurrencies.put(id, currency);
+                debug("Loaded currency: " + id + " (Name: " + displayName + ", Initial: " + initial + ")");
+            }
         }
 
-        for (String id : section.getKeys(false)) {
-            ConfigurationSection currSection = section.getConfigurationSection(id);
-            if (currSection == null) continue;
-
-            String displayName = currSection.getString("display-name", id);
-            String singular = currSection.getString("singular", "Coin");
-            String plural = currSection.getString("plural", "Coins");
-            double initial = currSection.getDouble("initial-balance", 0.0);
-            int decimal = currSection.getInt("decimal-places", 2);
-            double tax = currSection.getDouble("transfer-tax", 0.0);
-
-            Currency currency = new Currency(id, displayName, singular, plural, initial, decimal, tax);
-            currencies.put(id, currency);
-            debug("Loaded currency: " + id + " (Name: " + displayName + ", Initial: " + initial + ")");
-        }
-
-        if (currencies.isEmpty()) {
+        if (loadedCurrencies.isEmpty()) {
             Currency fallbackCurrency = createFallbackCurrency();
-            currencies.put(fallbackCurrency.getId(), fallbackCurrency);
+            loadedCurrencies.put(fallbackCurrency.getId().toLowerCase(Locale.ROOT), fallbackCurrency);
             getLogger().warning("No valid currencies were loaded from config. Added fallback currency '" + fallbackCurrency.getId() + "'.");
         }
 
-        defaultCurrencyId = getConfig().getString("default-currency", FALLBACK_CURRENCY_ID);
-        if (defaultCurrencyId == null || defaultCurrencyId.isBlank() || !currencies.containsKey(defaultCurrencyId)) {
-            getLogger().warning("Configured default-currency is invalid: '" + defaultCurrencyId + "'. Using first available currency.");
-            defaultCurrencyId = currencies.keySet().iterator().next();
+        String configuredDefault = getConfig().getString("default-currency", FALLBACK_CURRENCY_ID);
+        String normalizedDefault = configuredDefault == null ? "" : configuredDefault.toLowerCase(Locale.ROOT);
+        if (normalizedDefault.isBlank() || !loadedCurrencies.containsKey(normalizedDefault)) {
+            getLogger().warning("Configured default-currency is invalid: '" + configuredDefault + "'. Using first available currency.");
+            normalizedDefault = loadedCurrencies.keySet().iterator().next();
         }
+
+        synchronized (currencies) {
+            currencies.clear();
+            currencies.putAll(loadedCurrencies);
+            defaultCurrencyId = normalizedDefault;
+        }
+
         debug("Default currency set to: " + defaultCurrencyId);
     }
 
@@ -244,35 +254,60 @@ public class MeowEco extends JavaPlugin {
     }
 
     private void loadExchangeRates() {
-        exchangeRates.clear();
+        Map<String, Map<String, Double>> loadedRates = new HashMap<>();
         ConfigurationSection section = getConfig().getConfigurationSection("exchange-rates");
-        if (section == null) return;
+        if (section != null) {
+            for (String rawFrom : section.getKeys(false)) {
+                ConfigurationSection fromSection = section.getConfigurationSection(rawFrom);
+                if (fromSection == null) {
+                    continue;
+                }
 
-        for (String from : section.getKeys(false)) {
-            ConfigurationSection fromSection = section.getConfigurationSection(from);
-            if (fromSection == null) continue;
-
-            Map<String, Double> targets = new HashMap<>();
-            for (String to : fromSection.getKeys(false)) {
-                double rate = fromSection.getDouble(to, 0.0);
-                if (rate > 0) {
-                    targets.put(to, rate);
+                String from = rawFrom.toLowerCase(Locale.ROOT);
+                Map<String, Double> targets = new HashMap<>();
+                for (String rawTo : fromSection.getKeys(false)) {
+                    String to = rawTo.toLowerCase(Locale.ROOT);
+                    double rate = fromSection.getDouble(rawTo, 0.0);
+                    if (rate > 0 && Double.isFinite(rate)) {
+                        targets.put(to, rate);
+                    }
+                }
+                if (!targets.isEmpty()) {
+                    loadedRates.put(from, targets);
                 }
             }
-            if (!targets.isEmpty()) {
-                exchangeRates.put(from, targets);
-            }
+        }
+
+        synchronized (exchangeRates) {
+            exchangeRates.clear();
+            exchangeRates.putAll(loadedRates);
         }
     }
 
     public double getExchangeRate(String from, String to) {
-        if (from == null || to == null) return 0.0;
-        if (from.equalsIgnoreCase(to)) return 1.0;
+        if (from == null || to == null) {
+            return 0.0;
+        }
+        if (from.equalsIgnoreCase(to)) {
+            return 1.0;
+        }
 
         String fromId = from.toLowerCase(Locale.ROOT);
         String toId = to.toLowerCase(Locale.ROOT);
+        Map<String, Map<String, Double>> ratesSnapshot;
+        String baseId;
 
-        Map<String, Double> direct = exchangeRates.get(fromId);
+        synchronized (exchangeRates) {
+            ratesSnapshot = new HashMap<>(exchangeRates.size());
+            for (Map.Entry<String, Map<String, Double>> entry : exchangeRates.entrySet()) {
+                ratesSnapshot.put(entry.getKey(), new HashMap<>(entry.getValue()));
+            }
+        }
+        synchronized (currencies) {
+            baseId = defaultCurrencyId;
+        }
+
+        Map<String, Double> direct = ratesSnapshot.get(fromId);
         if (direct != null) {
             Double rate = direct.get(toId);
             if (rate != null && rate > 0) {
@@ -280,12 +315,12 @@ public class MeowEco extends JavaPlugin {
             }
         }
 
-        String base = defaultCurrencyId;
-        if (base == null) return 0.0;
-        String baseId = base.toLowerCase(Locale.ROOT);
+        if (baseId == null) {
+            return 0.0;
+        }
 
-        Double fromToBase = getDirectOrInverseRate(fromId, baseId);
-        Double baseToTo = getDirectOrInverseRate(baseId, toId);
+        Double fromToBase = getDirectOrInverseRate(ratesSnapshot, fromId, baseId);
+        Double baseToTo = getDirectOrInverseRate(ratesSnapshot, baseId, toId);
         if (fromToBase != null && baseToTo != null) {
             return fromToBase * baseToTo;
         }
@@ -293,10 +328,12 @@ public class MeowEco extends JavaPlugin {
         return 0.0;
     }
 
-    private Double getDirectOrInverseRate(String from, String to) {
-        if (from.equalsIgnoreCase(to)) return 1.0;
+    private Double getDirectOrInverseRate(Map<String, Map<String, Double>> ratesSnapshot, String from, String to) {
+        if (from.equalsIgnoreCase(to)) {
+            return 1.0;
+        }
 
-        Map<String, Double> direct = exchangeRates.get(from);
+        Map<String, Double> direct = ratesSnapshot.get(from);
         if (direct != null) {
             Double rate = direct.get(to);
             if (rate != null && rate > 0) {
@@ -304,7 +341,7 @@ public class MeowEco extends JavaPlugin {
             }
         }
 
-        Map<String, Double> inverseMap = exchangeRates.get(to);
+        Map<String, Double> inverseMap = ratesSnapshot.get(to);
         if (inverseMap != null) {
             Double inverse = inverseMap.get(from);
             if (inverse != null && inverse > 0) {
@@ -316,16 +353,26 @@ public class MeowEco extends JavaPlugin {
     }
 
     public void setExchangeRate(String from, String to, double rate) {
-        Map<String, Double> rates = exchangeRates.computeIfAbsent(from, k -> new HashMap<>());
-        if (rate <= 0) {
-            rates.remove(to);
-            if (rates.isEmpty()) exchangeRates.remove(from);
-        } else {
-            rates.put(to, rate);
+        if (from == null || to == null) {
+            return;
         }
-        
-        // Save to config
-        getConfig().set("exchange-rates." + from + "." + to, rate > 0 ? rate : null);
+
+        String normalizedFrom = from.toLowerCase(Locale.ROOT);
+        String normalizedTo = to.toLowerCase(Locale.ROOT);
+
+        synchronized (exchangeRates) {
+            Map<String, Double> rates = exchangeRates.computeIfAbsent(normalizedFrom, k -> new HashMap<>());
+            if (rate <= 0) {
+                rates.remove(normalizedTo);
+                if (rates.isEmpty()) {
+                    exchangeRates.remove(normalizedFrom);
+                }
+            } else {
+                rates.put(normalizedTo, rate);
+            }
+        }
+
+        getConfig().set("exchange-rates." + normalizedFrom + "." + normalizedTo, rate > 0 ? rate : null);
         saveConfig();
     }
 
@@ -372,35 +419,48 @@ public class MeowEco extends JavaPlugin {
     }
 
     public Map<String, Currency> getCurrencies() {
-        return currencies;
+        synchronized (currencies) {
+            return Collections.unmodifiableMap(new HashMap<>(currencies));
+        }
     }
 
     public Currency getCurrency(String id) {
-        return currencies.get(id);
+        if (id == null) {
+            return null;
+        }
+        String normalizedId = id.toLowerCase(Locale.ROOT);
+        synchronized (currencies) {
+            return currencies.get(normalizedId);
+        }
     }
 
     public String getDefaultCurrencyId() {
-        if (defaultCurrencyId == null || !currencies.containsKey(defaultCurrencyId)) {
-            return getDefaultCurrency().getId();
+        synchronized (currencies) {
+            if (defaultCurrencyId == null || !currencies.containsKey(defaultCurrencyId)) {
+                return getDefaultCurrency().getId();
+            }
+            return defaultCurrencyId;
         }
-        return defaultCurrencyId;
     }
 
     public Currency getDefaultCurrency() {
-        Currency currency = defaultCurrencyId == null ? null : currencies.get(defaultCurrencyId);
-        if (currency != null) {
-            return currency;
-        }
-        if (!currencies.isEmpty()) {
-            defaultCurrencyId = currencies.keySet().iterator().next();
-            return currencies.get(defaultCurrencyId);
-        }
+        synchronized (currencies) {
+            Currency currency = defaultCurrencyId == null ? null : currencies.get(defaultCurrencyId);
+            if (currency != null) {
+                return currency;
+            }
+            if (!currencies.isEmpty()) {
+                defaultCurrencyId = currencies.keySet().iterator().next();
+                return currencies.get(defaultCurrencyId);
+            }
 
-        Currency fallback = createFallbackCurrency();
-        currencies.put(fallback.getId(), fallback);
-        defaultCurrencyId = fallback.getId();
-        getLogger().warning("Currency map is empty at runtime. Auto-restored fallback currency '" + fallback.getId() + "'.");
-        return fallback;
+            Currency fallback = createFallbackCurrency();
+            String fallbackId = fallback.getId().toLowerCase(Locale.ROOT);
+            currencies.put(fallbackId, fallback);
+            defaultCurrencyId = fallbackId;
+            getLogger().warning("Currency map is empty at runtime. Auto-restored fallback currency '" + fallback.getId() + "'.");
+            return fallback;
+        }
     }
 
     public String formatBalance(double amount, Currency currency) {

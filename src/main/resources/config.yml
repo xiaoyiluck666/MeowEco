@@ -50,10 +50,16 @@ exchange-rates:
 rich-tax:
   # Enable periodic rich tax / 是否启用周期性富人税
   enabled: false
-  # Only the amount above this balance is taxed / 仅对超过此余额的部分征税
-  threshold: 100000.0
-  # Tax rate applied to the taxable portion / 对超出部分应用的税率
-  rate: 0.05
+  # Per-currency settings, key is currency id / 每个货币独立配置，键为货币 id
+  currencies:
+    coins:
+      enabled: true
+      threshold: 100000.0
+      rate: 0.05
+    gems:
+      enabled: true
+      threshold: 5000.0
+      rate: 0.02
   # First execution anchor time (server local time, HH:mm) / 首次执行锚点时间（服务器本地时间，HH:mm）
   start-time: "03:00"
   # Execution interval, supports s/m/h/d, plain numbers mean minutes / 执行间隔，支持 s/m/h/d，纯数字按分钟处理

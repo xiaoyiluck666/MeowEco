@@ -2,6 +2,7 @@ package com.xiaoyiluck.meoweco.commands;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
 import org.bukkit.Bukkit;
@@ -15,6 +16,8 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import org.bukkit.command.PluginCommand;
 
 public class EcoCommand implements CommandExecutor, TabCompleter {
 
@@ -33,21 +36,37 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
 
         String sub = args[0].toLowerCase();
 
-        // Support /eco bal and /eco top for convenience
+        // Delegate to shared main command handlers to avoid duplicated command instances/cache.
         if (sub.equals("bal") || sub.equals("balance") || sub.equals("money")) {
-            String[] subArgs = java.util.Arrays.copyOfRange(args, 1, args.length);
-            return new MoneyCommand(plugin).onCommand(sender, command, sub, subArgs);
+            PluginCommand main = plugin.getCommand("meoweco");
+            if (main != null && main.getExecutor() != null) {
+                String[] delegatedArgs = new String[args.length];
+                delegatedArgs[0] = "bal";
+                if (args.length > 1) {
+                    System.arraycopy(args, 1, delegatedArgs, 1, args.length - 1);
+                }
+                return main.getExecutor().onCommand(sender, main, "meco", delegatedArgs);
+            }
+            return new MoneyCommand(plugin).onCommand(sender, command, sub, java.util.Arrays.copyOfRange(args, 1, args.length));
         }
         if (sub.equals("top") || sub.equals("baltop")) {
-            String[] subArgs = java.util.Arrays.copyOfRange(args, 1, args.length);
-            return new BaltopCommand(plugin).onCommand(sender, command, sub, subArgs);
+            PluginCommand main = plugin.getCommand("meoweco");
+            if (main != null && main.getExecutor() != null) {
+                String[] delegatedArgs = new String[args.length];
+                delegatedArgs[0] = "top";
+                if (args.length > 1) {
+                    System.arraycopy(args, 1, delegatedArgs, 1, args.length - 1);
+                }
+                return main.getExecutor().onCommand(sender, main, "meco", delegatedArgs);
+            }
+            return new BaltopCommand(plugin).onCommand(sender, command, sub, java.util.Arrays.copyOfRange(args, 1, args.length));
         }
 
         if (!sender.hasPermission("meoweco.admin")) {
             sender.sendMessage(plugin.getConfigManager().getComponent("no-permission"));
             return true;
         }
-        
+
         // Handle SetRate
         if (sub.equals("setrate")) {
             if (args.length < 4) {
@@ -71,45 +90,44 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
 
             plugin.setExchangeRate(fromId, toId, rate);
             sender.sendMessage(plugin.getConfigManager().getComponent("eco-setrate-success")
-                    .replaceText(config -> config.matchLiteral("%from%").replacement(fromId))
-                    .replaceText(config -> config.matchLiteral("%to%").replacement(toId))
+                    .replaceText(config -> config.matchLiteral("%from%").replacement(fromId.toLowerCase()))
+                    .replaceText(config -> config.matchLiteral("%to%").replacement(toId.toLowerCase()))
                     .replaceText(config -> config.matchLiteral("%rate%").replacement(String.valueOf(rate))));
             return true;
         }
-        
+
         // Handle Refresh
         if (sub.equals("refresh")) {
-             plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                 // 1. Clear memory caches immediately
-                 if (plugin.getPlaceholders() != null) {
-                     plugin.getPlaceholders().invalidateCache();
-                 }
-                 if (plugin.getBaltopCommand() != null) {
-                     plugin.getBaltopCommand().invalidateCache();
-                 }
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                if (plugin.getPlaceholders() != null) {
+                    plugin.getPlaceholders().invalidateCache();
+                }
+                if (plugin.getBaltopCommand() != null) {
+                    plugin.getBaltopCommand().invalidateCache();
+                }
 
-                 // 2. Try to resolve unknown players
-                 java.util.Map<java.util.UUID, String> unknowns = plugin.getDatabaseManager().getUnknownAccounts();
-                 int fixed = 0;
-                 for (java.util.Map.Entry<java.util.UUID, String> entry : unknowns.entrySet()) {
-                     try {
-                         OfflinePlayer p = Bukkit.getOfflinePlayer(entry.getKey());
-                         if (p.getName() != null && !p.getName().equalsIgnoreCase("Unknown")) {
-                             plugin.getDatabaseManager().updatePlayerName(entry.getKey(), p.getName());
-                             fixed++;
-                         }
-                     } catch (Exception ignored) {}
-                 }
-                 
-                 final int fixedCount = fixed;
-                 plugin.getServer().getScheduler().runTask(plugin, () -> {
+                java.util.Map<java.util.UUID, String> unknowns = plugin.getDatabaseManager().getUnknownAccounts();
+                int fixed = 0;
+                for (java.util.Map.Entry<java.util.UUID, String> entry : unknowns.entrySet()) {
+                    try {
+                        OfflinePlayer p = Bukkit.getOfflinePlayer(entry.getKey());
+                        if (p.getName() != null && !p.getName().equalsIgnoreCase("Unknown")) {
+                            plugin.getDatabaseManager().updatePlayerName(entry.getKey(), p.getName());
+                            fixed++;
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                final int fixedCount = fixed;
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
                     sender.sendMessage(plugin.getConfigManager().getComponent("eco-refresh-success")
                             .replaceText(TextReplacementConfig.builder().matchLiteral("%count%").replacement(String.valueOf(fixedCount)).build()));
                 });
-             });
-             return true;
+            });
+            return true;
         }
-        
+
         // Handle Hide/Unhide
         if (sub.equals("hide") || sub.equals("unhide")) {
             if (args.length < 2) {
@@ -117,27 +135,32 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
             String targetName = args[1];
-            OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
+            OfflinePlayer target = PlayerLookup.resolveOfflinePlayer(plugin, targetName).orElse(null);
+            if (target == null) {
+                sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
+                return true;
+            }
             boolean hidden = sub.equals("hide");
+            String displayName = PlayerLookup.getDisplayName(target, targetName);
             plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                 boolean updated = plugin.getDatabaseManager().updateHidden(target.getUniqueId(), targetName, hidden);
-                 plugin.getServer().getScheduler().runTask(plugin, () -> {
-                     if (!updated) {
-                         sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
-                         return;
-                     }
+                boolean updated = plugin.getDatabaseManager().updateHidden(target.getUniqueId(), targetName, hidden);
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (!updated) {
+                        sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
+                        return;
+                    }
 
-                     if (plugin.getBaltopCommand() != null) {
-                         plugin.getBaltopCommand().invalidateCache();
-                     }
-                     if (plugin.getPlaceholders() != null) {
-                         plugin.getPlaceholders().invalidateCache();
-                     }
+                    if (plugin.getBaltopCommand() != null) {
+                        plugin.getBaltopCommand().invalidateCache();
+                    }
+                    if (plugin.getPlaceholders() != null) {
+                        plugin.getPlaceholders().invalidateCache();
+                    }
 
-                     String key = hidden ? "eco-hide-success" : "eco-unhide-success";
-                     sender.sendMessage(plugin.getConfigManager().getComponent(key)
-                             .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(target.getName() != null ? target.getName() : targetName).build()));
-                 });
+                    String key = hidden ? "eco-hide-success" : "eco-unhide-success";
+                    sender.sendMessage(plugin.getConfigManager().getComponent(key)
+                            .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(displayName).build()));
+                });
             });
             return true;
         }
@@ -167,7 +190,11 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+        OfflinePlayer target = PlayerLookup.resolveOfflinePlayer(plugin, args[1]).orElse(null);
+        if (target == null) {
+            sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
+            return true;
+        }
         double amount;
         try {
             amount = Double.parseDouble(args[2]);
@@ -203,10 +230,11 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
         final double finalAmount = amount;
         final Currency finalCurrency = currency;
         final OfflinePlayer finalTarget = target;
+        final String targetName = PlayerLookup.getDisplayName(target, args[1]);
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             if (!plugin.getDatabaseManager().hasAccount(finalTarget.getUniqueId(), finalCurrency.getId())) {
-                 plugin.getDatabaseManager().createAccount(finalTarget.getUniqueId(), finalCurrency.getId(), 0);
+                plugin.getDatabaseManager().createAccount(finalTarget.getUniqueId(), finalCurrency.getId(), 0);
             }
 
             String msgKey;
@@ -239,10 +267,10 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 default:
                     return;
             }
-            
+
             final String finalMsgKey = msgKey;
             final boolean finalSuccess = success;
-            
+
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (!finalSuccess) {
                     if (sub.equals("take")) {
@@ -258,14 +286,13 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                     }
                     return;
                 }
-                
-                // Invalidate baltop cache
+
                 if (plugin.getBaltopCommand() != null) {
                     plugin.getBaltopCommand().invalidateCache();
                 }
-                
+
                 Component msg = plugin.getConfigManager().getComponent(finalMsgKey)
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(finalTarget.getName() != null ? finalTarget.getName() : "Unknown").build())
+                        .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(targetName).build())
                         .replaceText(TextReplacementConfig.builder().matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)).build())
                         .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())).build());
                 sender.sendMessage(msg);
@@ -299,17 +326,35 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
 
         String sub = args[0].toLowerCase();
         if (sub.equals("bal") || sub.equals("balance") || sub.equals("money")) {
-            String[] subArgs = java.util.Arrays.copyOfRange(args, 1, args.length);
-            return new MoneyCommand(plugin).onTabComplete(sender, command, sub, subArgs);
+            PluginCommand main = plugin.getCommand("meoweco");
+            if (main != null && main.getTabCompleter() != null) {
+                String[] delegatedArgs = new String[args.length];
+                delegatedArgs[0] = "bal";
+                if (args.length > 1) {
+                    System.arraycopy(args, 1, delegatedArgs, 1, args.length - 1);
+                }
+                List<String> suggestions = main.getTabCompleter().onTabComplete(sender, main, "meco", delegatedArgs);
+                return suggestions == null ? Collections.emptyList() : suggestions;
+            }
+            return new MoneyCommand(plugin).onTabComplete(sender, command, sub, java.util.Arrays.copyOfRange(args, 1, args.length));
         }
         if (sub.equals("top") || sub.equals("baltop")) {
-            String[] subArgs = java.util.Arrays.copyOfRange(args, 1, args.length);
-            return new BaltopCommand(plugin).onTabComplete(sender, command, sub, subArgs);
+            PluginCommand main = plugin.getCommand("meoweco");
+            if (main != null && main.getTabCompleter() != null) {
+                String[] delegatedArgs = new String[args.length];
+                delegatedArgs[0] = "top";
+                if (args.length > 1) {
+                    System.arraycopy(args, 1, delegatedArgs, 1, args.length - 1);
+                }
+                List<String> suggestions = main.getTabCompleter().onTabComplete(sender, main, "meco", delegatedArgs);
+                return suggestions == null ? Collections.emptyList() : suggestions;
+            }
+            return new BaltopCommand(plugin).onTabComplete(sender, command, sub, java.util.Arrays.copyOfRange(args, 1, args.length));
         }
 
         if (args.length == 2) {
             if (sub.equals("refresh")) return Collections.emptyList();
-            
+
             if (sub.equals("setrate")) {
                 String prefix = args[1].toLowerCase();
                 List<String> suggestions = new ArrayList<>();

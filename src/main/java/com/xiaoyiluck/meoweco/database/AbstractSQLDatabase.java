@@ -15,6 +15,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -103,6 +104,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             }
 
             normalizeNullableData(conn, columns, defaultCurrency);
+            ensureIndexes(conn);
             setSchemaVersion(conn, CURRENT_SCHEMA_VERSION);
             conn.commit();
             if (previousSchemaVersion != CURRENT_SCHEMA_VERSION) {
@@ -243,6 +245,40 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             plugin.getLogger().info("Updating MySQL primary key to (uuid, currency)...");
             executeUpdate(conn, "ALTER TABLE " + getTableName() + " DROP PRIMARY KEY, ADD PRIMARY KEY (uuid, currency)");
         }
+    }
+
+    private void ensureIndexes(Connection conn) throws SQLException {
+        createIndexIfMissing(conn,
+                "idx_meoweco_currency_hidden_balance",
+                "CREATE INDEX idx_meoweco_currency_hidden_balance ON " + getTableName() + " (currency, hidden, balance)");
+        createIndexIfMissing(conn,
+                "idx_meoweco_currency_username",
+                "CREATE INDEX idx_meoweco_currency_username ON " + getTableName() + " (currency, username)");
+        createIndexIfMissing(conn,
+                "idx_meoweco_username",
+                "CREATE INDEX idx_meoweco_username ON " + getTableName() + " (username)");
+    }
+
+    private void createIndexIfMissing(Connection conn, String indexName, String createSql) throws SQLException {
+        if (hasIndex(conn, indexName)) {
+            return;
+        }
+        try (Statement statement = conn.createStatement()) {
+            statement.execute(createSql);
+        }
+    }
+
+    private boolean hasIndex(Connection conn, String indexName) throws SQLException {
+        String expected = indexName.toLowerCase(Locale.ROOT);
+        try (ResultSet rs = conn.getMetaData().getIndexInfo(conn.getCatalog(), null, getTableName(), false, false)) {
+            while (rs.next()) {
+                String name = rs.getString("INDEX_NAME");
+                if (name != null && name.toLowerCase(Locale.ROOT).equals(expected)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private void normalizeNullableData(Connection conn, Map<String, String> columns, String defaultCurrency) throws SQLException {
@@ -493,6 +529,60 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     @Override
+    public boolean exchange(UUID uuid, String fromCurrency, String toCurrency, double withdrawAmount, double depositAmount) {
+        if (!isPositiveFinite(withdrawAmount) || !isPositiveFinite(depositAmount)) {
+            return false;
+        }
+        if (fromCurrency == null || toCurrency == null) {
+            return false;
+        }
+
+        String withdrawSql = "UPDATE " + getTableName()
+                + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
+        String depositSql = "UPDATE " + getTableName()
+                + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
+
+        try (Connection conn = getConnection()) {
+            boolean originalAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try (PreparedStatement psWithdraw = conn.prepareStatement(withdrawSql);
+                 PreparedStatement psDeposit = conn.prepareStatement(depositSql)) {
+                psWithdraw.setDouble(1, withdrawAmount);
+                psWithdraw.setString(2, uuid.toString());
+                psWithdraw.setString(3, fromCurrency);
+                psWithdraw.setDouble(4, withdrawAmount);
+
+                int withdrawRows = psWithdraw.executeUpdate();
+                if (withdrawRows == 0) {
+                    conn.rollback();
+                    return false;
+                }
+
+                psDeposit.setDouble(1, depositAmount);
+                psDeposit.setString(2, uuid.toString());
+                psDeposit.setString(3, toCurrency);
+
+                int depositRows = psDeposit.executeUpdate();
+                if (depositRows == 0) {
+                    conn.rollback();
+                    return false;
+                }
+
+                conn.commit();
+                return true;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(originalAutoCommit);
+            }
+        } catch (SQLException e) {
+            logSqlError("Exchange error", e);
+            return false;
+        }
+    }
+
+    @Override
     public OptionalDouble findFrozenBalance(UUID uuid, String currency) {
         return findNumericColumn(uuid, currency, COLUMN_FROZEN_BALANCE);
     }
@@ -558,6 +648,36 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         } catch (SQLException e) {
             logSqlError("UpdatePlayerName error", e);
         }
+    }
+
+    @Override
+    public Optional<UUID> findUuidByUsername(String username) {
+        if (username == null || username.isBlank()) {
+            return Optional.empty();
+        }
+        String sql = "SELECT uuid FROM " + getTableName()
+                + " WHERE LOWER(username) = LOWER(?) GROUP BY uuid"
+                + " ORDER BY CASE WHEN MIN(username) = ? THEN 0 ELSE 1 END, uuid ASC";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setString(2, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return Optional.empty();
+                }
+
+                UUID resolvedUuid = UUID.fromString(rs.getString(COLUMN_UUID));
+                if (rs.next()) {
+                    return Optional.empty();
+                }
+                return Optional.of(resolvedUuid);
+            }
+        } catch (IllegalArgumentException ignored) {
+        } catch (SQLException e) {
+            logSqlError("FindUuidByUsername error", e);
+        }
+        return Optional.empty();
     }
 
     @Override

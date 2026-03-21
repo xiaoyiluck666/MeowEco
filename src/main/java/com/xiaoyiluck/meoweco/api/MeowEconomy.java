@@ -2,9 +2,9 @@ package com.xiaoyiluck.meoweco.api;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
-import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 
 import java.util.Collections;
@@ -56,6 +56,17 @@ public class MeowEconomy implements Economy {
         return plugin.getDatabaseManager().findFrozenBalance(uuid, currencyId).orElse(0.0D);
     }
 
+    private OfflinePlayer resolveOfflinePlayer(MeowEco plugin, String playerName) {
+        if (plugin == null) {
+            return null;
+        }
+        return PlayerLookup.resolveOfflinePlayer(plugin, playerName).orElse(null);
+    }
+
+    private EconomyResponse playerNotFoundResponse() {
+        return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Player not found");
+    }
+
     @Override
     public boolean isEnabled() {
         MeowEco plugin = getPlugin();
@@ -103,8 +114,9 @@ public class MeowEconomy implements Economy {
 
     @Override
     public boolean has(String playerName, double amount) {
-        OfflinePlayer player = Bukkit.getOfflinePlayer(playerName);
-        return has(player, amount);
+        MeowEco plugin = getPlugin();
+        OfflinePlayer player = resolveOfflinePlayer(plugin, playerName);
+        return player != null && has(player, amount);
     }
 
     @Override
@@ -129,8 +141,9 @@ public class MeowEconomy implements Economy {
 
     @Override
     public boolean hasAccount(String playerName) {
-        OfflinePlayer player = Bukkit.getOfflinePlayer(playerName);
-        return hasAccount(player);
+        MeowEco plugin = getPlugin();
+        OfflinePlayer player = resolveOfflinePlayer(plugin, playerName);
+        return player != null && hasAccount(player);
     }
 
     @Override
@@ -152,8 +165,9 @@ public class MeowEconomy implements Economy {
 
     @Override
     public double getBalance(String playerName) {
-        OfflinePlayer player = Bukkit.getOfflinePlayer(playerName);
-        return getBalance(player);
+        MeowEco plugin = getPlugin();
+        OfflinePlayer player = resolveOfflinePlayer(plugin, playerName);
+        return player == null ? 0.0D : getBalance(player);
     }
 
     @Override
@@ -175,8 +189,9 @@ public class MeowEconomy implements Economy {
 
     @Override
     public boolean createPlayerAccount(String playerName) {
-        OfflinePlayer player = Bukkit.getOfflinePlayer(playerName);
-        return createPlayerAccount(player);
+        MeowEco plugin = getPlugin();
+        OfflinePlayer player = resolveOfflinePlayer(plugin, playerName);
+        return player != null && createPlayerAccount(player);
     }
 
     @Override
@@ -199,8 +214,9 @@ public class MeowEconomy implements Economy {
 
     @Override
     public EconomyResponse withdrawPlayer(String playerName, double amount) {
-        OfflinePlayer player = Bukkit.getOfflinePlayer(playerName);
-        return withdrawPlayer(player, amount);
+        MeowEco plugin = getPlugin();
+        OfflinePlayer player = resolveOfflinePlayer(plugin, playerName);
+        return player == null ? playerNotFoundResponse() : withdrawPlayer(player, amount);
     }
 
     @Override
@@ -235,8 +251,9 @@ public class MeowEconomy implements Economy {
 
     @Override
     public EconomyResponse depositPlayer(String playerName, double amount) {
-        OfflinePlayer player = Bukkit.getOfflinePlayer(playerName);
-        return depositPlayer(player, amount);
+        MeowEco plugin = getPlugin();
+        OfflinePlayer player = resolveOfflinePlayer(plugin, playerName);
+        return player == null ? playerNotFoundResponse() : depositPlayer(player, amount);
     }
 
     @Override

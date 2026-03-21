@@ -23,7 +23,7 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
         final java.util.UUID uuid = player.getUniqueId();
         final String name = player.getName();
-        
+
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             for (com.xiaoyiluck.meoweco.objects.Currency currency : plugin.getCurrencies().values()) {
                 if (!plugin.getDatabaseManager().hasAccount(uuid, currency.getId())) {
@@ -39,14 +39,13 @@ public class PlayerListener implements Listener {
                 Component prefix = plugin.getConfigManager().getComponent("prefix");
                 Component updateMsg = plugin.getConfigManager().getComponent("update-available")
                         .replaceText(TextReplacementConfig.builder().matchLiteral("%version%").replacement(plugin.getUpdateChecker().getLatestVersion()).build());
-                
+
                 Component downloadLink = Component.text("[Click to Download]")
                         .color(NamedTextColor.YELLOW)
                         .clickEvent(ClickEvent.openUrl(plugin.getUpdateChecker().getDownloadUrl()));
-                
+
                 player.sendMessage(prefix.append(updateMsg).append(Component.space()).append(downloadLink));
             }, 40L); // 2 seconds delay
         }
     }
 }
-

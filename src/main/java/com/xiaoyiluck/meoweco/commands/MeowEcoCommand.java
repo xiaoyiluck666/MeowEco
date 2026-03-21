@@ -78,7 +78,9 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
             case "hide":
             case "unhide":
             case "refresh":
-                // Prepend subcommand for EcoCommand
+            case "freeze":
+            case "unfreeze":
+            case "deductfrozen":
                 String[] ecoArgs = new String[subArgs.length + 1];
                 ecoArgs[0] = sub;
                 System.arraycopy(subArgs, 0, ecoArgs, 1, subArgs.length);
@@ -104,21 +106,23 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 sender.sendMessage(Component.text("§eChecking for updates..."));
-                plugin.getUpdateChecker().check().thenAccept(available -> {
-                    if (available) {
-                        Component prefix = plugin.getConfigManager().getComponent("prefix");
-                        Component updateMsg = plugin.getConfigManager().getComponent("update-available")
-                                .replaceText(TextReplacementConfig.builder().matchLiteral("%version%").replacement(plugin.getUpdateChecker().getLatestVersion()).build());
-                        
-                        Component downloadLink = Component.text("[Click to Download]")
-                                .color(NamedTextColor.YELLOW)
-                                .clickEvent(ClickEvent.openUrl(plugin.getUpdateChecker().getDownloadUrl()));
-                        
-                        sender.sendMessage(prefix.append(updateMsg).append(Component.space()).append(downloadLink));
-                    } else {
-                        sender.sendMessage(Component.text("§aMeowEco is up to date! (v" + plugin.getPluginMeta().getVersion() + ")"));
-                    }
-                });
+                plugin.getUpdateChecker().check().thenAccept(available ->
+                        plugin.getServer().getScheduler().runTask(plugin, () -> {
+                            if (available) {
+                                Component prefix = plugin.getConfigManager().getComponent("prefix");
+                                Component updateMsg = plugin.getConfigManager().getComponent("update-available")
+                                        .replaceText(TextReplacementConfig.builder().matchLiteral("%version%").replacement(plugin.getUpdateChecker().getLatestVersion()).build());
+
+                                Component downloadLink = Component.text("[Click to Download]")
+                                        .color(NamedTextColor.YELLOW)
+                                        .clickEvent(ClickEvent.openUrl(plugin.getUpdateChecker().getDownloadUrl()));
+
+                                sender.sendMessage(prefix.append(updateMsg).append(Component.space()).append(downloadLink));
+                            } else {
+                                sender.sendMessage(Component.text("§aMeowEco is up to date! (v" + plugin.getPluginMeta().getVersion() + ")"));
+                            }
+                        })
+                );
                 return true;
             case "debug":
                 if (!sender.hasPermission("meoweco.debug")) {
@@ -129,7 +133,9 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(Component.text("§bLoaded Currencies:"));
                     for (String id : plugin.getCurrencies().keySet()) {
                         com.xiaoyiluck.meoweco.objects.Currency c = plugin.getCurrency(id);
-                        sender.sendMessage(Component.text("§7- §e" + id + " §f(Name: " + c.getDisplayName() + "§f)"));
+                        if (c != null) {
+                            sender.sendMessage(Component.text("§7- §e" + id + " §f(Name: " + c.getDisplayName() + "§f)"));
+                        }
                     }
                     return true;
                 }
@@ -178,7 +184,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 subs.add("exchange");
             }
             if (sender.hasPermission("meoweco.admin")) {
-                subs.addAll(List.of("give", "take", "set", "setrate", "reload", "debug", "refresh", "hide", "unhide", "checkupdate"));
+                subs.addAll(List.of("give", "take", "set", "freeze", "unfreeze", "deductfrozen", "setrate", "reload", "debug", "refresh", "hide", "unhide", "checkupdate"));
             }
             String prefix = args[0].toLowerCase();
             return subs.stream().filter(s -> s.startsWith(prefix)).toList();
@@ -198,11 +204,13 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 return takeCommand.onTabComplete(sender, command, sub, subArgs);
             case "give":
             case "set":
+            case "freeze":
+            case "unfreeze":
+            case "deductfrozen":
             case "setrate":
             case "hide":
             case "unhide":
             case "refresh":
-                // Prepend subcommand for EcoCommand
                 String[] ecoTabArgs = new String[subArgs.length + 1];
                 ecoTabArgs[0] = sub;
                 System.arraycopy(subArgs, 0, ecoTabArgs, 1, subArgs.length);

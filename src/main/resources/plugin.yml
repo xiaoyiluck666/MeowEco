@@ -17,6 +17,9 @@ permissions:
       meoweco.eco.give: true
       meoweco.eco.take: true
       meoweco.eco.set: true
+      meoweco.eco.freeze: true
+      meoweco.eco.unfreeze: true
+      meoweco.eco.deductfrozen: true
       meoweco.debug: true
   meoweco.balance:
     description: Check balance
@@ -44,6 +47,15 @@ permissions:
     default: op
   meoweco.eco.set:
     description: Admin set balance
+    default: op
+  meoweco.eco.freeze:
+    description: Admin freeze funds
+    default: op
+  meoweco.eco.unfreeze:
+    description: Admin unfreeze funds
+    default: op
+  meoweco.eco.deductfrozen:
+    description: Admin deduct frozen funds
     default: op
   meoweco.debug:
     description: Toggle debug mode

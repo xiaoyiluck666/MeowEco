@@ -1,6 +1,7 @@
 package com.xiaoyiluck.meoweco.database;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.UUID;
 
@@ -27,6 +28,7 @@ public interface DatabaseManager {
     boolean withdraw(UUID uuid, String currency, double amount);
     boolean transfer(UUID from, UUID to, String currency, double amount);
     boolean transfer(UUID from, UUID to, String currency, double withdrawAmount, double depositAmount);
+    boolean exchange(UUID uuid, String fromCurrency, String toCurrency, double withdrawAmount, double depositAmount);
 
     default OptionalDouble findFrozenBalance(UUID uuid, String currency) {
         return OptionalDouble.of(getFrozenBalance(uuid, currency));
@@ -45,6 +47,10 @@ public interface DatabaseManager {
     boolean deductFrozen(UUID uuid, String currency, double amount);
 
     void updatePlayerName(UUID uuid, String name);
+
+    default Optional<UUID> findUuidByUsername(String username) {
+        return Optional.empty();
+    }
 
     Map<String, Double> getTopAccounts(String currency, int limit);
     Map<UUID, Double> getAccountsAboveBalance(String currency, double minimumBalance);

@@ -2,7 +2,7 @@ package com.xiaoyiluck.meoweco.tax;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
-import org.bukkit.Bukkit;
+import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -50,8 +50,7 @@ public class RichTaxService {
 
         plugin.getLogger().info("Rich tax scheduled: start=" + settings.startTime()
                 + ", interval=" + formatDuration(settings.interval())
-                + ", threshold=" + settings.threshold()
-                + ", rate=" + settings.rate()
+                + ", configured-currencies=" + settings.currencyRules().size()
                 + ", target=" + settings.destinationType()
                 + (settings.destinationType() == DestinationType.PLAYER ? "(" + settings.destinationPlayerName() + ")" : ""));
     }
@@ -75,11 +74,19 @@ public class RichTaxService {
 
             for (Currency currency : plugin.getCurrencies().values()) {
                 String currencyId = currency.getId();
+                RichTaxRule rule = settings.ruleFor(currencyId);
+                if (rule == null || !rule.enabled() || rule.rate() <= 0.0D) {
+                    continue;
+                }
+
+                double threshold = rule.threshold();
+                double rate = rule.rate();
+
                 if (collectorUuid != null && !plugin.getDatabaseManager().hasAccount(collectorUuid, currencyId)) {
                     plugin.getDatabaseManager().createAccount(collectorUuid, currencyId, 0.0D);
                 }
 
-                Map<UUID, Double> taxableAccounts = plugin.getDatabaseManager().getAccountsAboveBalance(currencyId, settings.threshold());
+                Map<UUID, Double> taxableAccounts = plugin.getDatabaseManager().getAccountsAboveBalance(currencyId, threshold);
                 if (taxableAccounts.isEmpty()) {
                     continue;
                 }
@@ -88,12 +95,12 @@ public class RichTaxService {
                 int taxedAccountsForCurrency = 0;
 
                 for (Map.Entry<UUID, Double> entry : taxableAccounts.entrySet()) {
-                    double taxableAmount = entry.getValue() - settings.threshold();
+                    double taxableAmount = entry.getValue() - threshold;
                     if (taxableAmount <= 0.0D) {
                         continue;
                     }
 
-                    double taxAmount = taxableAmount * settings.rate();
+                    double taxAmount = taxableAmount * rate;
                     if (taxAmount <= 0.0D || !Double.isFinite(taxAmount)) {
                         continue;
                     }
@@ -115,7 +122,8 @@ public class RichTaxService {
                     totalCollected += collectedForCurrency;
                     totalTaxedAccounts += taxedAccountsForCurrency;
                     plugin.getLogger().info("Rich tax collected " + plugin.formatFixed(collectedForCurrency, currency)
-                            + " from " + taxedAccountsForCurrency + " account(s) in currency '" + currencyId + "'.");
+                            + " from " + taxedAccountsForCurrency + " account(s) in currency '" + currencyId + "'"
+                            + " (threshold=" + threshold + ", rate=" + rate + ").");
                 }
             }
 
@@ -138,7 +146,10 @@ public class RichTaxService {
             return null;
         }
 
-        OfflinePlayer collector = Bukkit.getOfflinePlayer(playerName);
+        OfflinePlayer collector = PlayerLookup.resolveOfflinePlayer(plugin, playerName).orElse(null);
+        if (collector == null) {
+            return null;
+        }
         if (collector.getUniqueId() == null) {
             return null;
         }
@@ -147,10 +158,24 @@ public class RichTaxService {
 
     private RichTaxSettings loadSettings() {
         boolean enabled = plugin.getConfig().getBoolean("rich-tax.enabled", false);
-        double threshold = Math.max(0.0D, plugin.getConfig().getDouble("rich-tax.threshold", 100000.0D));
-        double rate = clampRate(plugin.getConfig().getDouble("rich-tax.rate", 0.05D));
         LocalTime startTime = parseStartTime(plugin.getConfig().getString("rich-tax.start-time", "03:00"));
         Duration interval = parseInterval(plugin.getConfig().getString("rich-tax.interval", "24h"));
+
+        Map<String, RichTaxRule> currencyRules = new java.util.LinkedHashMap<>();
+        org.bukkit.configuration.ConfigurationSection currencyRulesSection = plugin.getConfig().getConfigurationSection("rich-tax.currencies");
+        if (currencyRulesSection != null) {
+            for (String rawCurrencyId : currencyRulesSection.getKeys(false)) {
+                org.bukkit.configuration.ConfigurationSection ruleSection = currencyRulesSection.getConfigurationSection(rawCurrencyId);
+                if (ruleSection == null) {
+                    continue;
+                }
+
+                boolean currencyEnabled = ruleSection.getBoolean("enabled", true);
+                double threshold = Math.max(0.0D, ruleSection.getDouble("threshold", 100000.0D));
+                double rate = clampRate(ruleSection.getDouble("rate", 0.05D));
+                currencyRules.put(normalizeCurrencyId(rawCurrencyId), new RichTaxRule(currencyEnabled, threshold, rate));
+            }
+        }
 
         String destinationTypeRaw = plugin.getConfig().getString("rich-tax.destination.type", "system");
         DestinationType destinationType = DestinationType.fromConfig(destinationTypeRaw);
@@ -164,7 +189,11 @@ public class RichTaxService {
             destinationPlayerUuid = ensureCollector(destinationPlayerName);
         }
 
-        return new RichTaxSettings(enabled, threshold, rate, startTime, interval, destinationType, destinationPlayerName, destinationPlayerUuid);
+        return new RichTaxSettings(enabled, currencyRules, startTime, interval, destinationType, destinationPlayerName, destinationPlayerUuid);
+    }
+
+    private static String normalizeCurrencyId(String currencyId) {
+        return currencyId == null ? "" : currencyId.trim().toLowerCase(Locale.ROOT);
     }
 
     private double clampRate(double rate) {
@@ -267,15 +296,25 @@ public class RichTaxService {
         }
     }
 
-    private record RichTaxSettings(
+
+    private record RichTaxRule(
             boolean enabled,
             double threshold,
-            double rate,
+            double rate
+    ) {
+    }
+
+    private record RichTaxSettings(
+            boolean enabled,
+            Map<String, RichTaxRule> currencyRules,
             LocalTime startTime,
             Duration interval,
             DestinationType destinationType,
             String destinationPlayerName,
             UUID destinationPlayerUuid
     ) {
+        private RichTaxRule ruleFor(String currencyId) {
+            return currencyRules.get(normalizeCurrencyId(currencyId));
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.xiaoyiluck.meoweco.commands;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -69,7 +70,11 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
                 currency = c;
             } else {
                 if (sender.hasPermission("meoweco.balance.other")) {
-                    target = Bukkit.getOfflinePlayer(args[0]);
+                    target = PlayerLookup.resolveOfflinePlayer(plugin, args[0]).orElse(null);
+                    if (target == null) {
+                        sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
+                        return true;
+                    }
                 } else {
                     // If no permission for others, treat it as currency if it was one, but it wasn't.
                     // Or if they just typed something, and they only have permission for self,
@@ -79,14 +84,19 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
                 }
             }
         } else if (args.length == 2) {
-            target = Bukkit.getOfflinePlayer(args[0]);
+            target = PlayerLookup.resolveOfflinePlayer(plugin, args[0]).orElse(null);
             currency = plugin.getCurrency(args[1]);
-            
+
+            if (target == null) {
+                sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
+                return true;
+            }
+
             if (currency == null) {
                 sender.sendMessage(plugin.getConfigManager().getComponent("invalid-currency"));
                 return true;
             }
-            
+
             // Check permission for other
             boolean isSelfCheck = sender instanceof Player && ((Player) sender).getUniqueId().equals(target.getUniqueId());
             if (!isSelfCheck && !sender.hasPermission("meoweco.balance.other")) {
@@ -100,7 +110,8 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
         final OfflinePlayer finalTarget = target;
         final Currency finalCurrency = currency;
         final boolean isSelf = sender instanceof Player && ((Player) sender).getUniqueId().equals(finalTarget.getUniqueId());
-        
+        final String targetName = args.length > 0 ? PlayerLookup.getDisplayName(finalTarget, args[0]) : PlayerLookup.getDisplayName(finalTarget, "Unknown");
+
         // Pre-fetch templates
         Component playerNotFound = plugin.getConfigManager().getComponent("player-not-found");
         Component checkSelfTemplate = plugin.getConfigManager().getComponent("balance-check-self");
@@ -116,18 +127,17 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
 
             double balance = plugin.getDatabaseManager().findBalance(finalTarget.getUniqueId(), finalCurrency.getId()).orElse(0.0D);
             double frozen = plugin.getDatabaseManager().findFrozenBalance(finalTarget.getUniqueId(), finalCurrency.getId()).orElse(0.0D);
-            
+
             plugin.getServer().getScheduler().runTask(plugin, () -> {
-                String targetName = finalTarget.getName();
                 Component template;
                 if (frozen > 0) {
                     template = isSelf ? checkSelfFrozenTemplate : checkOtherFrozenTemplate;
                 } else {
                     template = isSelf ? checkSelfTemplate : checkOtherTemplate;
                 }
-                
+
                 Component msg = template
-                        .replaceText(config -> config.matchLiteral("%player%").replacement(targetName != null ? targetName : "Unknown"))
+                        .replaceText(config -> config.matchLiteral("%player%").replacement(targetName))
                         .replaceText(config -> config.matchLiteral("%amount%").replacement(plugin.formatShort(balance, finalCurrency)))
                         .replaceText(config -> config.matchLiteral("%frozen%").replacement(plugin.formatShort(frozen, finalCurrency)))
                         .replaceText(config -> config.matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())));
@@ -191,21 +201,9 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
                 plugin.getDatabaseManager().createAccount(player.getUniqueId(), to.getId(), to.getInitialBalance());
             }
 
-            boolean withdrew = plugin.getDatabaseManager().withdraw(player.getUniqueId(), from.getId(), amount);
-            if (!withdrew) {
+            boolean exchanged = plugin.getDatabaseManager().exchange(player.getUniqueId(), from.getId(), to.getId(), amount, resultAmount);
+            if (!exchanged) {
                 plugin.getServer().getScheduler().runTask(plugin, () -> sender.sendMessage(plugin.getConfigManager().getComponent("pay-failed-balance")));
-                return;
-            }
-
-            boolean deposited = plugin.getDatabaseManager().deposit(player.getUniqueId(), to.getId(), resultAmount);
-            if (!deposited) {
-                boolean rolledBack = plugin.getDatabaseManager().deposit(player.getUniqueId(), from.getId(), amount);
-                if (!rolledBack) {
-                    plugin.getLogger().severe("Exchange rollback failed for player " + player.getUniqueId() + ", from=" + from.getId() + ", to=" + to.getId() + ", amount=" + amount + ", result=" + resultAmount);
-                }
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    sender.sendMessage(Component.text("§c兑换失败：入账异常，已尝试回滚，请联系管理员。"));
-                });
                 return;
             }
 

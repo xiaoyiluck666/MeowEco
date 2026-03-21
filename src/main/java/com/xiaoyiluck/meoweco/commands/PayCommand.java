@@ -2,6 +2,7 @@ package com.xiaoyiluck.meoweco.commands;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -41,8 +42,12 @@ public class PayCommand implements CommandExecutor, TabCompleter {
         }
 
         Player player = (Player) sender;
-        OfflinePlayer target = Bukkit.getOfflinePlayer(args[0]);
-        
+        OfflinePlayer target = PlayerLookup.resolveOfflinePlayer(plugin, args[0]).orElse(null);
+        if (target == null) {
+            sender.sendMessage(plugin.getConfigManager().getComponent("player-not-found"));
+            return true;
+        }
+
         if (target.getUniqueId().equals(player.getUniqueId())) {
              sender.sendMessage(plugin.getConfigManager().getComponent("pay-failed-self"));
              return true;
@@ -69,10 +74,10 @@ public class PayCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
         }
-        
+
         final double finalAmount = amount;
         final Currency finalCurrency = currency;
-        final String targetName = target.getName();
+        final String targetName = PlayerLookup.getDisplayName(target, args[0]);
         final String playerName = player.getName();
 
         // Pre-fetch templates
