@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "meoweco",
+  "version": "${version}",
+  "name": "MeowEco",
+  "description": "MeowEco Fabric adapter",
+  "authors": [
+    "xiaoyiluck"
+  ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.xiaoyiluck.meoweco.fabric.MeowEcoFabricMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${fabric_loader_min_version}",
+    "fabric-api": "*",
+    "minecraft": ">=1.20.4",
+    "java": ">=25"
+  }
+}

@@ -1,65 +1,45 @@
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
-
-plugins {
-    java
-    id("com.gradleup.shadow") version "8.3.9"
-}
+import org.gradle.api.plugins.JavaPluginExtension
+import org.gradle.api.tasks.compile.JavaCompile
 
 group = "com.xiaoyiluck"
-version = "26.7.2"
+version = "26.8.1"
 
-repositories {
-    mavenCentral()
-    maven("https://repo.papermc.io/repository/maven-public/")
-    maven("https://oss.sonatype.org/content/groups/public/")
-    maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
-    maven("https://jitpack.io")
-}
+subprojects {
+    apply(plugin = "java")
+    group = rootProject.group
+    version = rootProject.version
 
-dependencies {
-    compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
-    compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
-        exclude(group = "org.bukkit", module = "bukkit")
+    extensions.configure<JavaPluginExtension> {
+        toolchain.languageVersion.set(JavaLanguageVersion.of(25))
     }
-    compileOnly("me.clip:placeholderapi:2.11.6")
 
-    implementation(platform("net.kyori:adventure-bom:4.18.0"))
-    implementation("net.kyori:adventure-text-serializer-legacy")
-    implementation("net.kyori:adventure-text-minimessage")
+    tasks.withType<JavaCompile>().configureEach {
+        options.encoding = "UTF-8"
+        options.release.set(25)
+    }
 
-    implementation("com.zaxxer:HikariCP:5.1.0")
-    compileOnly("org.xerial:sqlite-jdbc:3.46.0.0")
-    compileOnly("com.mysql:mysql-connector-j:8.4.0")
-}
-
-val targetJavaVersion = 17
-
-java {
-    val javaVersion = JavaVersion.toVersion(targetJavaVersion)
-    sourceCompatibility = javaVersion
-    targetCompatibility = javaVersion
-    if (JavaVersion.current() < javaVersion) {
-        toolchain.languageVersion.set(JavaLanguageVersion.of(targetJavaVersion))
+    configurations.configureEach {
+        resolutionStrategy.cacheChangingModulesFor(12, "hours")
+        resolutionStrategy.cacheDynamicVersionsFor(12, "hours")
     }
 }
 
-tasks.withType<JavaCompile> {
-    options.encoding = "UTF-8"
-    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
-        options.release.set(targetJavaVersion)
+project(":meoweco-fabric") {
+    extensions.configure<JavaPluginExtension> {
+        toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+    }
+
+    tasks.withType<JavaCompile>().configureEach {
+        options.release.set(25)
     }
 }
 
-tasks.processResources {
-    val props = mapOf("version" to version)
-    inputs.properties(props)
-    filteringCharset = "UTF-8"
-    filesMatching("plugin.yml") {
-        expand(props)
+project(":meoweco-paper") {
+    extensions.configure<JavaPluginExtension> {
+        toolchain.languageVersion.set(JavaLanguageVersion.of(25))
     }
-}
 
-tasks.withType<ShadowJar> {
-    archiveClassifier.set("")
-    relocate("com.zaxxer.hikari", "com.xiaoyiluck.meoweco.libs.hikari")
+    tasks.withType<JavaCompile>().configureEach {
+        options.release.set(25)
+    }
 }
