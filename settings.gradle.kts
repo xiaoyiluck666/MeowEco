@@ -27,6 +27,12 @@ dependencyResolutionManagement {
         maven("https://repo.papermc.io/repository/maven-public/") {
             content {
                 includeGroupByRegex("io\\.papermc(\\..*)?")
+                includeGroupByRegex("net\\.md-5(\\..*)?")
+            }
+        }
+        maven("https://libraries.minecraft.net/") {
+            content {
+                includeGroupByRegex("com\\.mojang(\\..*)?")
             }
         }
         maven("https://oss.sonatype.org/content/groups/public/") {

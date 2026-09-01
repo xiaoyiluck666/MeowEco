@@ -24,6 +24,7 @@ This file now serves as the running changelog for MeowEco.
 ### Fixed
 
 - Fixed the GitHub Actions Gradle invocation for repositories where the wrapper executable bit is not preserved.
+- Fixed clean-environment Paper dependency resolution by adding the required PaperMC and Mojang repository groups.
 - Kept audit rows in the same database transaction as their balance mutations so failed writes cannot leave false history.
 - Kept complete migration batches atomic and rejected invalid rows before any balance was changed.
 - Used one transaction ID for both sides of transfers and exchanges.
