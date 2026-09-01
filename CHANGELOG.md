@@ -15,6 +15,7 @@ This file now serves as the running changelog for MeowEco.
 
 ### Changed
 
+- Rebuilt the GitHub Wiki as parallel English and Simplified Chinese server-owner guides with persistent language navigation, complete setup and configuration references, migration and audit runbooks, integration examples, and troubleshooting guidance.
 - Changed the default message language from Simplified Chinese to English; documented the one-line `zh_CN` switch for Chinese servers.
 - Changed the marketplace display name to `MeowEco Economy` while preserving the internal plugin identity and integration contracts.
 - Reworked the Modrinth page around positioning, five benefits, compatibility, and a three-minute install flow.
