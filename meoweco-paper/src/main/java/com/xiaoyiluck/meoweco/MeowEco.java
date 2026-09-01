@@ -18,11 +18,15 @@ import net.milkbowl.vault.economy.Economy;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bstats.bukkit.Metrics;
+import org.bstats.charts.SimplePie;
 
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 import java.util.Collections;
 
@@ -37,6 +41,7 @@ public class MeowEco extends JavaPlugin {
     private MeowEcoPlaceholders placeholders;
     private UpdateChecker updateChecker;
     private RichTaxService richTaxService;
+    private Metrics metrics;
     private boolean updateAvailable = false;
     
     private final Map<String, Currency> currencies = new HashMap<>();
@@ -64,6 +69,8 @@ public class MeowEco extends JavaPlugin {
             databaseManager = new SQLiteDatabase(this);
         }
         databaseManager.init();
+        runPrecisionReportOnStartup();
+        initializeMetrics();
 
         richTaxService = new RichTaxService(this);
         richTaxService.reload();
@@ -147,6 +154,48 @@ public class MeowEco extends JavaPlugin {
         getLogger().info("MeowEco enabled!");
     }
 
+    private void runPrecisionReportOnStartup() {
+        if (!getConfig().getBoolean("precision-migration.report-on-startup", true)) {
+            return;
+        }
+
+        Map<String, Integer> scales = new LinkedHashMap<>();
+        for (Currency currency : currencies.values()) {
+            scales.put(currency.getId(), Math.max(0, currency.getDecimalPlaces()));
+        }
+
+        getServer().getScheduler().runTaskAsynchronously(this, () -> {
+            var report = databaseManager.reportPrecisionIssues(scales);
+            if (!report.hasIssues()) {
+                return;
+            }
+            getLogger().warning("Stored balance precision report found " + report.affectedAccounts()
+                    + " affected accounts, " + report.affectedBalances()
+                    + " balances, and " + report.affectedFrozenBalances()
+                    + " frozen balances with more decimals than configured. No balances were changed. Use /meco precision report for details.");
+        });
+    }
+
+    private void initializeMetrics() {
+        if (!getConfig().getBoolean("metrics.enabled", true)) {
+            getLogger().info("Anonymous bStats metrics are disabled in config.yml.");
+            return;
+        }
+        int pluginId = getConfig().getInt("metrics.bstats-plugin-id", 0);
+        if (pluginId <= 0) {
+            getLogger().warning("bStats metrics are enabled but metrics.bstats-plugin-id is not configured.");
+            return;
+        }
+        metrics = new Metrics(this, pluginId);
+        metrics.addCustomChart(new SimplePie("storage_backend",
+                () -> getConfig().getString("storage.type", "sqlite").toLowerCase(Locale.ROOT)));
+        metrics.addCustomChart(new SimplePie("currency_count",
+                () -> Integer.toString(getCurrencies().size())));
+        metrics.addCustomChart(new SimplePie("default_language",
+                () -> getConfig().getString("messages.language", "en_US")));
+        getLogger().info("Anonymous bStats metrics enabled (plugin id " + pluginId + ").");
+    }
+
     @Override
     public void onDisable() {
         // Cancel all async tasks to prevent database usage during shutdown
@@ -165,6 +214,10 @@ public class MeowEco extends JavaPlugin {
 
         if (databaseManager != null) {
             databaseManager.close();
+        }
+        if (metrics != null) {
+            metrics.shutdown();
+            metrics = null;
         }
         
         // Do not set instance to null here if you want old Economy objects to work after reload!
@@ -408,6 +461,24 @@ public class MeowEco extends JavaPlugin {
 
     public MeowEconomy getVaultEconomy() {
         return meowEconomy;
+    }
+
+    public void invalidateVaultEconomyCache(UUID uuid, String currencyId) {
+        if (meowEconomy != null) {
+            meowEconomy.invalidateCache(uuid, currencyId);
+        }
+    }
+
+    public void invalidateVaultEconomyCache(UUID uuid) {
+        if (meowEconomy != null) {
+            meowEconomy.invalidateCache(uuid);
+        }
+    }
+
+    public void invalidateVaultEconomyCache() {
+        if (meowEconomy != null) {
+            meowEconomy.invalidateAllCache();
+        }
     }
 
     public boolean isUpdateAvailable() {

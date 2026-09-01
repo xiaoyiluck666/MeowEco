@@ -70,56 +70,54 @@ public class EconomyService {
     }
 
     public PayResult pay(UUID from, UUID to, Currency currency, double amount) {
-        if (!isPositiveFinite(amount)) {
+        if (!MoneyAmountPolicy.isPositiveFinite(amount)) {
+            return PayResult.invalid();
+        }
+        double withdrawAmount = MoneyAmountPolicy.roundForStorage(amount, currency);
+        if (!MoneyAmountPolicy.isPositiveFinite(withdrawAmount)) {
             return PayResult.invalid();
         }
 
         double taxRate = clamp(currency.getTransferTax(), 0.0, 1.0);
-        double tax = amount * taxRate;
-        double depositAmount = amount - tax;
+        double tax = MoneyAmountPolicy.roundForStorage(withdrawAmount * taxRate, currency);
+        double depositAmount = MoneyAmountPolicy.roundForStorage(withdrawAmount - tax, currency);
         if (!Double.isFinite(depositAmount) || depositAmount < 0) {
             return PayResult.invalid();
         }
 
         boolean success = tax > 0
-                ? databaseManager.transfer(from, to, currency.getId(), amount, depositAmount)
-                : databaseManager.transfer(from, to, currency.getId(), amount);
-        return new PayResult(success, amount, depositAmount, tax);
+                ? databaseManager.transfer(from, to, currency.getId(), withdrawAmount, depositAmount)
+                : databaseManager.transfer(from, to, currency.getId(), withdrawAmount);
+        return new PayResult(success, withdrawAmount, depositAmount, tax);
     }
 
     public ExchangeResult exchange(UUID uuid, Currency fromCurrency, Currency toCurrency, double amount, double rate) {
-        if (!isPositiveFinite(amount) || !isPositiveFinite(rate)) {
+        if (!MoneyAmountPolicy.isPositiveFinite(amount) || !MoneyAmountPolicy.isPositiveFinite(rate)) {
             return ExchangeResult.invalid();
         }
 
-        double resultAmount = amount * rate;
-        if (!isPositiveFinite(resultAmount)) {
+        double withdrawAmount = MoneyAmountPolicy.roundForStorage(amount, fromCurrency);
+        double resultAmount = MoneyAmountPolicy.roundForStorage(withdrawAmount * rate, toCurrency);
+        if (!MoneyAmountPolicy.isPositiveFinite(withdrawAmount) || !MoneyAmountPolicy.isPositiveFinite(resultAmount)) {
             return ExchangeResult.invalid();
         }
 
-        boolean success = databaseManager.exchange(uuid, fromCurrency.getId(), toCurrency.getId(), amount, resultAmount);
-        return new ExchangeResult(success, amount, resultAmount, rate);
+        boolean success = databaseManager.exchange(uuid, fromCurrency.getId(), toCurrency.getId(), withdrawAmount, resultAmount);
+        return new ExchangeResult(success, withdrawAmount, resultAmount, rate);
     }
 
     public boolean applyAdminOperation(String operation, UUID uuid, Currency currency, double amount) {
         String op = operation.toLowerCase(Locale.ROOT);
+        double normalizedAmount = MoneyAmountPolicy.roundForStorage(amount, currency);
         return switch (op) {
-            case "give" -> isPositiveFinite(amount) && databaseManager.deposit(uuid, currency.getId(), amount);
-            case "take" -> isPositiveFinite(amount) && databaseManager.withdraw(uuid, currency.getId(), amount);
-            case "set" -> isNonNegativeFinite(amount) && databaseManager.updateBalance(uuid, currency.getId(), amount);
-            case "freeze" -> isPositiveFinite(amount) && databaseManager.freeze(uuid, currency.getId(), amount);
-            case "unfreeze" -> isPositiveFinite(amount) && databaseManager.unfreeze(uuid, currency.getId(), amount);
-            case "deductfrozen" -> isPositiveFinite(amount) && databaseManager.deductFrozen(uuid, currency.getId(), amount);
+            case "give" -> MoneyAmountPolicy.isPositiveFinite(normalizedAmount) && databaseManager.deposit(uuid, currency.getId(), normalizedAmount);
+            case "take" -> MoneyAmountPolicy.isPositiveFinite(normalizedAmount) && databaseManager.withdraw(uuid, currency.getId(), normalizedAmount);
+            case "set" -> MoneyAmountPolicy.isNonNegativeFinite(normalizedAmount) && databaseManager.updateBalance(uuid, currency.getId(), normalizedAmount);
+            case "freeze" -> MoneyAmountPolicy.isPositiveFinite(normalizedAmount) && databaseManager.freeze(uuid, currency.getId(), normalizedAmount);
+            case "unfreeze" -> MoneyAmountPolicy.isPositiveFinite(normalizedAmount) && databaseManager.unfreeze(uuid, currency.getId(), normalizedAmount);
+            case "deductfrozen" -> MoneyAmountPolicy.isPositiveFinite(normalizedAmount) && databaseManager.deductFrozen(uuid, currency.getId(), normalizedAmount);
             default -> false;
         };
-    }
-
-    private boolean isPositiveFinite(double amount) {
-        return Double.isFinite(amount) && amount > 0;
-    }
-
-    private boolean isNonNegativeFinite(double amount) {
-        return Double.isFinite(amount) && amount >= 0;
     }
 
     private double clamp(double value, double min, double max) {

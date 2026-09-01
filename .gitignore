@@ -1,6 +1,8 @@
 # Gradle
 .gradle
 build/
+**/build/
+**/bin/
 
 # IDE
 .idea/
@@ -12,6 +14,13 @@ build/
 # Logs
 logs
 *.log
+
+# Local workspace/runtime artifacts
+.serena/
+bin/
+libs/
+run/
+**/run/
 
 # OS
 .DS_Store

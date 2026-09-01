@@ -2,7 +2,13 @@ config-version: 8
 
 # Message language / 消息语言
 messages:
-  language: "zh_CN"
+  language: "en_US"
+
+# Anonymous usage metrics / 匿名使用统计
+metrics:
+  enabled: true
+  # Set this to the numeric MeowEco project id assigned by bStats.
+  bstats-plugin-id: 0
 
 # Storage settings / 存储设置
 storage:
@@ -50,6 +56,12 @@ update-checker:
   interval: 24
   # Modrinth project slug / Modrinth 项目标识
   slug: "meoweco"
+
+# Precision migration safety check / 金额精度迁移安全检查
+precision-migration:
+  # Scan existing stored balances on startup and only report issues; no money is changed.
+  # 启动时扫描历史余额精度问题，仅报告，不修改任何金额。
+  report-on-startup: true
 
 # Default currency used by Vault and commands / Vault 与默认命令使用的默认货币
 default-currency: "coins"

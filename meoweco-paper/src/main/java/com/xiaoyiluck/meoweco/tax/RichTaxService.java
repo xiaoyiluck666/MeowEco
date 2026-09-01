@@ -82,7 +82,10 @@ public class RichTaxService {
                     settings.destinationPlayerUuid()
             );
 
-            RichTaxEngine.CycleResult result = RichTaxEngine.execute(plugin.getDatabaseManager(), plugin.getCurrencies(), engineSettings);
+            RichTaxEngine.CycleResult result;
+            try (var ignored = plugin.getDatabaseManager().openAuditScope("rich_tax", "scheduler")) {
+                result = RichTaxEngine.execute(plugin.getDatabaseManager(), plugin.getCurrencies(), engineSettings);
+            }
 
             for (RichTaxEngine.CurrencyCycleResult currencyResult : result.perCurrency().values()) {
                 Currency currency = plugin.getCurrency(currencyResult.currencyId());
@@ -96,6 +99,9 @@ public class RichTaxService {
 
             if (result.hasTaxedAccounts() && plugin.getBaltopCommand() != null) {
                 plugin.getBaltopCommand().invalidateCache();
+            }
+            if (result.hasTaxedAccounts()) {
+                plugin.invalidateVaultEconomyCache();
             }
 
             if (!result.hasTaxedAccounts()) {

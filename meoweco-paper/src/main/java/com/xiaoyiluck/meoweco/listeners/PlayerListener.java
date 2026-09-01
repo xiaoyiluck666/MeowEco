@@ -9,6 +9,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 
 public class PlayerListener implements Listener {
 
@@ -25,11 +26,14 @@ public class PlayerListener implements Listener {
         final String name = player.getName();
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            for (com.xiaoyiluck.meoweco.objects.Currency currency : plugin.getCurrencies().values()) {
-                if (!plugin.getDatabaseManager().hasAccount(uuid, currency.getId())) {
-                    plugin.getDatabaseManager().createAccount(uuid, currency.getId(), currency.getInitialBalance());
+            try (var ignored = plugin.getDatabaseManager().openAuditScope("player_join", name)) {
+                for (com.xiaoyiluck.meoweco.objects.Currency currency : plugin.getCurrencies().values()) {
+                    if (!plugin.getDatabaseManager().hasAccount(uuid, currency.getId())) {
+                        plugin.getDatabaseManager().createAccount(uuid, currency.getId(), currency.getInitialBalance());
+                    }
                 }
             }
+            plugin.invalidateVaultEconomyCache(uuid);
             plugin.getDatabaseManager().updatePlayerName(uuid, name);
         });
 
@@ -47,5 +51,10 @@ public class PlayerListener implements Listener {
                 player.sendMessage(prefix.append(updateMsg).append(Component.space()).append(downloadLink));
             }, 40L); // 2 seconds delay
         }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        plugin.invalidateVaultEconomyCache(event.getPlayer().getUniqueId());
     }
 }

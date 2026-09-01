@@ -3,6 +3,8 @@ package com.xiaoyiluck.meoweco.commands;
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.EconomyService;
+import com.xiaoyiluck.meoweco.service.MoneyAmountPolicy;
+import com.xiaoyiluck.meoweco.utils.AmountInput;
 import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -174,6 +176,9 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(plugin.getConfigManager().getComponent("invalid-currency"));
             return true;
         }
+        if (!AmountInput.fitsCurrencyScaleOrNotify(plugin, sender, amount, from)) {
+            return true;
+        }
 
         double rate = plugin.getExchangeRate(from.getId(), to.getId());
         if (rate <= 0 || !Double.isFinite(rate)) {
@@ -181,16 +186,19 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        double resultAmount = amount * rate;
+        double resultAmount = MoneyAmountPolicy.roundForStorage(amount * rate, to);
         if (!Double.isFinite(resultAmount) || resultAmount <= 0) {
             sender.sendMessage(plugin.getConfigManager().getComponent("invalid-amount"));
             return true;
         }
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            economyService.ensureAccount(player.getUniqueId(), from);
-            economyService.ensureAccount(player.getUniqueId(), to);
-            EconomyService.ExchangeResult exchangeResult = economyService.exchange(player.getUniqueId(), from, to, amount, rate);
+            EconomyService.ExchangeResult exchangeResult;
+            try (var ignored = plugin.getDatabaseManager().openAuditScope("command.exchange", player.getName())) {
+                economyService.ensureAccount(player.getUniqueId(), from);
+                economyService.ensureAccount(player.getUniqueId(), to);
+                exchangeResult = economyService.exchange(player.getUniqueId(), from, to, amount, rate);
+            }
             boolean exchanged = exchangeResult.success();
             if (!exchanged) {
                 plugin.getServer().getScheduler().runTask(plugin, () -> sender.sendMessage(plugin.getConfigManager().getComponent("pay-failed-balance")));
@@ -201,6 +209,8 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
             if (plugin.getBaltopCommand() != null) {
                 plugin.getBaltopCommand().invalidateCache();
             }
+            plugin.invalidateVaultEconomyCache(player.getUniqueId(), from.getId());
+            plugin.invalidateVaultEconomyCache(player.getUniqueId(), to.getId());
 
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 sender.sendMessage(plugin.getConfigManager().getComponent("exchange-success")

@@ -2,7 +2,7 @@ import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.compile.JavaCompile
 
 group = "com.xiaoyiluck"
-version = "26.8.1"
+version = "26.10.0"
 
 subprojects {
     apply(plugin = "java")
@@ -21,16 +21,6 @@ subprojects {
     configurations.configureEach {
         resolutionStrategy.cacheChangingModulesFor(12, "hours")
         resolutionStrategy.cacheDynamicVersionsFor(12, "hours")
-    }
-}
-
-project(":meoweco-fabric") {
-    extensions.configure<JavaPluginExtension> {
-        toolchain.languageVersion.set(JavaLanguageVersion.of(25))
-    }
-
-    tasks.withType<JavaCompile>().configureEach {
-        options.release.set(25)
     }
 }
 

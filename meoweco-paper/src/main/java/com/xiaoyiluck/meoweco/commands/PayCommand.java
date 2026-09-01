@@ -3,6 +3,7 @@ package com.xiaoyiluck.meoweco.commands;
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.EconomyService;
+import com.xiaoyiluck.meoweco.utils.AmountInput;
 import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -77,6 +78,9 @@ public class PayCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
         }
+        if (!AmountInput.fitsCurrencyScaleOrNotify(plugin, sender, amount, currency)) {
+            return true;
+        }
 
         final double finalAmount = amount;
         final Currency finalCurrency = currency;
@@ -96,7 +100,10 @@ public class PayCommand implements CommandExecutor, TabCompleter {
                 return;
             }
 
-            EconomyService.PayResult payResult = economyService.pay(player.getUniqueId(), target.getUniqueId(), finalCurrency, finalAmount);
+            EconomyService.PayResult payResult;
+            try (var ignored = plugin.getDatabaseManager().openAuditScope("command.pay", playerName)) {
+                payResult = economyService.pay(player.getUniqueId(), target.getUniqueId(), finalCurrency, finalAmount);
+            }
             double tax = payResult.tax();
             double depositAmount = payResult.depositAmount();
             boolean success = payResult.success();
@@ -107,6 +114,8 @@ public class PayCommand implements CommandExecutor, TabCompleter {
                     if (plugin.getBaltopCommand() != null) {
                         plugin.getBaltopCommand().invalidateCache();
                     }
+                    plugin.invalidateVaultEconomyCache(player.getUniqueId(), finalCurrency.getId());
+                    plugin.invalidateVaultEconomyCache(target.getUniqueId(), finalCurrency.getId());
                     
                     Component senderMsg;
                     if (tax > 0) {

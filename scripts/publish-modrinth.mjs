@@ -5,89 +5,38 @@ import { stdin as input, stdout as output } from 'node:process';
 
 const projectSlug = 'meoweco';
 const projectId = 'M9JO0TFv';
-const versionNumber = '26.8.1';
-const jarPath = path.resolve('meoweco-paper/build/libs/meoweco-paper-26.8.1.jar');
 const userAgent = 'xiaoyiluck666/meoweco-release';
 
-const changelog = `# MeowEco 26.8.1
+function readProjectVersion() {
+  const buildFile = fs.readFileSync(path.resolve('build.gradle.kts'), 'utf8');
+  const match = buildFile.match(/^\s*version\s*=\s*"([^"]+)"/m);
+  if (!match) {
+    throw new Error('Unable to read project version from build.gradle.kts');
+  }
+  return match[1];
+}
 
-MeowEco \`26.8.1\` targets **Paper 26.1 / 26.1.1 / 26.1.2** servers running **Java 25**. This release focuses on smoother use on newer Paper environments and a better out-of-the-box MySQL storage experience.
+function readListEnv(name, fallback) {
+  return (process.env[name] ?? fallback)
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
 
-## Added
-- MySQL storage now ships with the Paper plugin, so server owners no longer need to install the MySQL driver separately.
-- Added MySQL pool settings for tuning connection count, timeouts, and connection lifetime.
+const versionNumber = process.env.MEOWECO_VERSION?.trim() || readProjectVersion();
+const jarPath = path.resolve(process.env.MEOWECO_JAR ?? `meoweco-paper/build/libs/meoweco-paper-${versionNumber}.jar`);
+const changelogPath = path.resolve(process.env.MEOWECO_CHANGELOG ?? `docs/release/CHANGELOG_${versionNumber}_EN.md`);
+const supportedGameVersions = readListEnv('MODRINTH_GAME_VERSIONS', '26.1,26.1.1,26.1.2,26.2');
 
-## Changed
-- Clarified support for \`Paper 26.1\`, \`Paper 26.1.1\`, and \`Paper 26.1.2\`, all running on Java 25.
-- Updated MySQL defaults to use \`utf8mb4\` and improved compatibility with common MySQL 8 authentication and timeout scenarios.
-- Updated documentation for the current version, supported Paper range, and Java runtime requirement.
+const changelog = fs.readFileSync(changelogPath, 'utf8');
 
-## Fixed
-- Improved MySQL connection stability for charset, authentication, and slow-network situations.
+function readProjectBody() {
+  return fs.readFileSync(path.resolve('docs/marketplace/MODRINTH.md'), 'utf8')
+    .replace(/\r\n/g, '\n')
+    .trim();
+}
 
-## Runtime Notes
-- Your server must run on **Java 25**.
-- This release targets **Paper 26.1 / 26.1.1 / 26.1.2**. If your server is still on Paper / Minecraft \`1.21.11\` or older, do not assume this version is compatible.`;
-
-const projectBody = `[issues](https://github.com/xiaoyiluck666/MeowEco/issues)
-
-# MeowEco Documentation
-
-Version: \`26.8.1\`
-
-MeowEco is a Paper economy plugin with multi-currency support, Vault integration, PlaceholderAPI support, exchange rates, frozen funds, scheduled rich tax, and built-in MySQL storage support for modern server setups.
-
-> Great for point shops, RPG currency systems, VIP menus, recharge flows, and servers that want smooth Vault / PlaceholderAPI / TrMenu integration.
-
-## Platform
-
-- Plugin version: \`26.8.1\`
-- Current build target API: \`io.papermc.paper:paper-api:26.1.2.build.64-stable\`
-- Additional compatibility guard: compiled against the earliest supported \`26.1.x\` API line to protect \`Paper 26.1 / 26.1.1 / 26.1.2\`
-- \`meoweco-paper\` is compiled with a JDK 25 toolchain and emitted as Java 25 bytecode
-- If you run \`Paper 26.1 / 26.1.1 / 26.1.2\`, the server itself still needs Java 25 because that requirement comes from upstream Paper
-
-## Implemented Features
-
-- Multiple currencies loaded from \`config.yml\`
-- Per-currency display name, singular or plural name, initial balance, decimal precision, and transfer tax
-- Configurable default currency used by Vault and command fallbacks
-- Currency exchange with direct, inverse, and default-currency-derived rates
-- Player balance lookup, payments, and leaderboard
-- Admin balance management: give, take, set
-- Frozen funds operations: \`freeze\`, \`unfreeze\`, \`deductfrozen\`
-- Leaderboard visibility control: \`hide\`, \`unhide\`
-- Leaderboard and placeholder cache refresh: \`refresh\`
-- Scheduled rich tax with system sink or player collector
-- Vault economy provider for the default currency
-- PlaceholderAPI expansion with cached balance, top, and server-total placeholders
-- Update checker against Modrinth
-- Automatic account creation for every configured currency on player join
-- Built-in MySQL storage support with bundled driver and pool tuning options
-- Command override listener for legacy labels such as \`/bal\`, \`/money\`, \`/pay\`, \`/baltop\`, \`/moneytop\`, and \`/ecotop\`
-
-## PlaceholderAPI
-
-Identifier: \`meoweco\`
-
-- Currency metadata placeholders for singular, plural, display, and id forms
-- Balance placeholders for \`balance\`, \`frozen\`, and \`available\`
-- Top placeholders and server-total placeholders with cached output for menu and HUD use
-- Works well with PlaceholderAPI-powered scoreboards, chat formats, and TrMenu displays
-
-## Developer API
-
-\`\`\`java
-MeowEcoAPI api = MeowEcoAPI.get();
-\`\`\`
-
-## Operational Notes
-
-- Leaderboard cache lifetime: 5 minutes
-- Placeholder balance cache lifetime: 1 second
-- Placeholder top and server-total cache lifetime: 30 seconds
-- Most database operations are dispatched asynchronously
-- Hidden accounts are excluded from leaderboard output at the database layer`;
+const projectBody = readProjectBody();
 
 function authHeaders(token, contentType) {
   const headers = {
@@ -144,10 +93,10 @@ async function createVersion(token) {
     version_number: versionNumber,
     changelog,
     dependencies: [],
-    game_versions: ['26.1', '26.1.1', '26.1.2'],
+    game_versions: supportedGameVersions,
     version_type: 'release',
-    loaders: ['bukkit', 'paper', 'purpur', 'spigot'],
-    featured: false,
+    loaders: ['paper', 'purpur'],
+    featured: true,
     project_id: projectId,
     file_parts: ['file'],
     primary_file: 'file',
@@ -168,8 +117,12 @@ async function updateProject(token) {
     method: 'PATCH',
     headers: authHeaders(token, 'application/json'),
     body: JSON.stringify({
-      description: 'A modern Paper economy plugin with multi-currency support, Vault, PlaceholderAPI, rich tax, frozen funds, exchange rates, and built-in MySQL storage.',
+      title: 'MeowEco Economy',
+      description: 'A controllable multi-currency Paper economy with seamless migration, transaction audit, rich tax, frozen funds, Vault, and SQL storage.',
       body: projectBody,
+      source_url: 'https://github.com/xiaoyiluck666/MeowEco',
+      issues_url: 'https://github.com/xiaoyiluck666/MeowEco/issues',
+      wiki_url: 'https://github.com/xiaoyiluck666/MeowEco/wiki',
     }),
   });
 }
@@ -177,6 +130,9 @@ async function updateProject(token) {
 async function main() {
   if (!fs.existsSync(jarPath)) {
     throw new Error(`Missing release jar: ${jarPath}`);
+  }
+  if (!fs.existsSync(changelogPath)) {
+    throw new Error(`Missing release changelog: ${changelogPath}`);
   }
 
   const token = await readToken();

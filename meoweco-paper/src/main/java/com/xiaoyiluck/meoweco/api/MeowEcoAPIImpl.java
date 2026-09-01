@@ -2,6 +2,7 @@ package com.xiaoyiluck.meoweco.api;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.service.MoneyAmountPolicy;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -28,6 +29,14 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
         return Double.isFinite(amount) && amount > 0.0;
     }
 
+    private double normalizePositiveAmount(String currencyId, double amount) {
+        Currency currency = plugin.getCurrency(currencyId);
+        if (currency == null || !MoneyAmountPolicy.isValidPositiveInput(amount, currency)) {
+            return Double.NaN;
+        }
+        return MoneyAmountPolicy.roundForStorage(amount, currency);
+    }
+
     @Override
     public double getBalance(java.util.UUID uuid, String currencyId) {
         return plugin.getDatabaseManager().findBalance(uuid, currencyId).orElse(0.0D);
@@ -35,18 +44,34 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
 
     @Override
     public boolean deposit(java.util.UUID uuid, String currencyId, double amount) {
-        if (!isPositiveFinite(amount)) {
+        double normalizedAmount = normalizePositiveAmount(currencyId, amount);
+        if (!isPositiveFinite(normalizedAmount)) {
             return false;
         }
-        return plugin.getDatabaseManager().deposit(uuid, currencyId, amount);
+        boolean success;
+        try (var ignored = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+            success = plugin.getDatabaseManager().deposit(uuid, currencyId, normalizedAmount);
+        }
+        if (success) {
+            plugin.invalidateVaultEconomyCache(uuid, currencyId);
+        }
+        return success;
     }
 
     @Override
     public boolean withdraw(java.util.UUID uuid, String currencyId, double amount) {
-        if (!isPositiveFinite(amount)) {
+        double normalizedAmount = normalizePositiveAmount(currencyId, amount);
+        if (!isPositiveFinite(normalizedAmount)) {
             return false;
         }
-        return plugin.getDatabaseManager().withdraw(uuid, currencyId, amount);
+        boolean success;
+        try (var ignored = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+            success = plugin.getDatabaseManager().withdraw(uuid, currencyId, normalizedAmount);
+        }
+        if (success) {
+            plugin.invalidateVaultEconomyCache(uuid, currencyId);
+        }
+        return success;
     }
 
     @Override
@@ -63,25 +88,49 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
 
     @Override
     public boolean freeze(java.util.UUID uuid, String currencyId, double amount) {
-        if (!isPositiveFinite(amount)) {
+        double normalizedAmount = normalizePositiveAmount(currencyId, amount);
+        if (!isPositiveFinite(normalizedAmount)) {
             return false;
         }
-        return plugin.getDatabaseManager().freeze(uuid, currencyId, amount);
+        boolean success;
+        try (var ignored = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+            success = plugin.getDatabaseManager().freeze(uuid, currencyId, normalizedAmount);
+        }
+        if (success) {
+            plugin.invalidateVaultEconomyCache(uuid, currencyId);
+        }
+        return success;
     }
 
     @Override
     public boolean unfreeze(java.util.UUID uuid, String currencyId, double amount) {
-        if (!isPositiveFinite(amount)) {
+        double normalizedAmount = normalizePositiveAmount(currencyId, amount);
+        if (!isPositiveFinite(normalizedAmount)) {
             return false;
         }
-        return plugin.getDatabaseManager().unfreeze(uuid, currencyId, amount);
+        boolean success;
+        try (var ignored = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+            success = plugin.getDatabaseManager().unfreeze(uuid, currencyId, normalizedAmount);
+        }
+        if (success) {
+            plugin.invalidateVaultEconomyCache(uuid, currencyId);
+        }
+        return success;
     }
 
     @Override
     public boolean deductFrozen(java.util.UUID uuid, String currencyId, double amount) {
-        if (!isPositiveFinite(amount)) {
+        double normalizedAmount = normalizePositiveAmount(currencyId, amount);
+        if (!isPositiveFinite(normalizedAmount)) {
             return false;
         }
-        return plugin.getDatabaseManager().deductFrozen(uuid, currencyId, amount);
+        boolean success;
+        try (var ignored = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+            success = plugin.getDatabaseManager().deductFrozen(uuid, currencyId, normalizedAmount);
+        }
+        if (success) {
+            plugin.invalidateVaultEconomyCache(uuid, currencyId);
+        }
+        return success;
     }
 }

@@ -1,28 +1,37 @@
 package com.xiaoyiluck.meoweco.database;
 
 import com.xiaoyiluck.meoweco.MeowEco;
+import com.xiaoyiluck.meoweco.database.PrecisionReport.CurrencyReport;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.bukkit.OfflinePlayer;
 
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public abstract class AbstractSQLDatabase implements DatabaseManager {
-    private static final int CURRENT_SCHEMA_VERSION = 1;
+    private static final int CURRENT_SCHEMA_VERSION = 2;
     private static final String TABLE_NAME = "meoweco_accounts";
+    private static final String AUDIT_TABLE_NAME = "meoweco_audit_log";
     private static final String TEMP_TABLE_NAME = "meoweco_accounts_migrating";
     private static final String META_TABLE_NAME = "meoweco_meta";
     private static final String META_KEY_SCHEMA_VERSION = "schema_version";
@@ -35,6 +44,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     protected final MeowEco plugin;
     protected HikariDataSource dataSource;
+    private final ThreadLocal<AuditContext> auditContext = ThreadLocal.withInitial(AuditContext::system);
 
     public AbstractSQLDatabase(MeowEco plugin) {
         this.plugin = plugin;
@@ -44,12 +54,37 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     protected void configurePool(HikariConfig config) {
         config.setPoolName("MeowEco-Pool");
-        config.setMaximumPoolSize(plugin.getConfig().getInt("storage.mysql.pool.maximum-pool-size", 10));
-        config.setMinimumIdle(plugin.getConfig().getInt("storage.mysql.pool.minimum-idle", 2));
-        config.setConnectionTimeout(plugin.getConfig().getLong("storage.mysql.pool.connection-timeout", 10000L));
-        config.setValidationTimeout(plugin.getConfig().getLong("storage.mysql.pool.validation-timeout", 5000L));
-        config.setIdleTimeout(plugin.getConfig().getLong("storage.mysql.pool.idle-timeout", 600000L));
-        config.setMaxLifetime(plugin.getConfig().getLong("storage.mysql.pool.max-lifetime", 1800000L));
+        config.setMaximumPoolSize(getPoolInt("storage.mysql.pool.maximum-pool-size", 10));
+        config.setMinimumIdle(getPoolInt("storage.mysql.pool.minimum-idle", 2));
+        config.setConnectionTimeout(getPoolLong("storage.mysql.pool.connection-timeout", 10000L));
+        config.setValidationTimeout(getPoolLong("storage.mysql.pool.validation-timeout", 5000L));
+        config.setIdleTimeout(getPoolLong("storage.mysql.pool.idle-timeout", 600000L));
+        config.setMaxLifetime(getPoolLong("storage.mysql.pool.max-lifetime", 1800000L));
+    }
+
+    protected int getPoolInt(String path, int defaultValue) {
+        return plugin.getConfig().getInt(path, defaultValue);
+    }
+
+    protected long getPoolLong(String path, long defaultValue) {
+        return plugin.getConfig().getLong(path, defaultValue);
+    }
+
+    protected String getDefaultCurrencyId() {
+        return plugin.getConfig().getString("default-currency", "coins");
+    }
+
+    protected Logger getLogger() {
+        return plugin.getLogger();
+    }
+
+    protected String getOfflinePlayerName(UUID uuid) {
+        OfflinePlayer player = plugin.getServer().getOfflinePlayer(uuid);
+        return player.getName();
+    }
+
+    protected void debug(String message) {
+        plugin.debug(message);
     }
 
     protected abstract boolean isSQLite();
@@ -80,7 +115,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         try (Connection conn = getConnection()) {
             ensureSchema(conn);
         } catch (SQLException e) {
-            plugin.getLogger().log(Level.SEVERE, "Could not initialize database schema", e);
+            getLogger().log(Level.SEVERE, "Could not initialize database schema", e);
         }
     }
 
@@ -89,13 +124,14 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         try (Statement statement = conn.createStatement()) {
             statement.execute(getCreateStatement());
         }
+        ensureAuditTable(conn);
 
         boolean originalAutoCommit = conn.getAutoCommit();
         conn.setAutoCommit(false);
         try {
             int previousSchemaVersion = getSchemaVersion(conn);
             Map<String, String> columns = getColumnTypes(conn);
-            String defaultCurrency = plugin.getConfig().getString("default-currency", "coins");
+            String defaultCurrency = getDefaultCurrencyId();
 
             if (isSQLite()) {
                 migrateSQLite(conn, columns, defaultCurrency);
@@ -108,7 +144,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             setSchemaVersion(conn, CURRENT_SCHEMA_VERSION);
             conn.commit();
             if (previousSchemaVersion != CURRENT_SCHEMA_VERSION) {
-                plugin.getLogger().info("Database schema version updated from "
+                getLogger().info("Database schema version updated from "
                         + previousSchemaVersion + " to " + CURRENT_SCHEMA_VERSION + ".");
             }
         } catch (SQLException e) {
@@ -183,7 +219,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             return;
         }
 
-        plugin.getLogger().info("Migrating SQLite economy table to the latest schema...");
+        getLogger().info("Migrating SQLite economy table to the latest schema...");
 
         try (Statement statement = conn.createStatement()) {
             statement.execute("DROP TABLE IF EXISTS " + TEMP_TABLE_NAME);
@@ -222,7 +258,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     private void migrateMySQL(Connection conn, Map<String, String> columns, String defaultCurrency) throws SQLException {
         if (!columns.containsKey(COLUMN_CURRENCY)) {
-            plugin.getLogger().info("Adding currency column to MySQL economy table...");
+            getLogger().info("Adding currency column to MySQL economy table...");
             executeUpdate(conn, "ALTER TABLE " + getTableName() + " ADD COLUMN currency VARCHAR(32) NULL");
             executeUpdate(conn, "UPDATE " + getTableName() + " SET currency = ? WHERE currency IS NULL OR currency = ''", defaultCurrency);
             executeUpdate(conn, "ALTER TABLE " + getTableName() + " MODIFY COLUMN currency VARCHAR(32) NOT NULL");
@@ -230,19 +266,19 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         }
 
         if (!columns.containsKey(COLUMN_HIDDEN)) {
-            plugin.getLogger().info("Adding hidden column to MySQL economy table...");
+            getLogger().info("Adding hidden column to MySQL economy table...");
             executeUpdate(conn, "ALTER TABLE " + getTableName() + " ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0");
             columns.put(COLUMN_HIDDEN, "INTEGER");
         }
 
         if (!columns.containsKey(COLUMN_FROZEN_BALANCE)) {
-            plugin.getLogger().info("Adding frozen_balance column to MySQL economy table...");
+            getLogger().info("Adding frozen_balance column to MySQL economy table...");
             executeUpdate(conn, "ALTER TABLE " + getTableName() + " ADD COLUMN frozen_balance DOUBLE NOT NULL DEFAULT 0.0");
             columns.put(COLUMN_FROZEN_BALANCE, "DOUBLE");
         }
 
         if (!hasCompositePrimaryKey(conn)) {
-            plugin.getLogger().info("Updating MySQL primary key to (uuid, currency)...");
+            getLogger().info("Updating MySQL primary key to (uuid, currency)...");
             executeUpdate(conn, "ALTER TABLE " + getTableName() + " DROP PRIMARY KEY, ADD PRIMARY KEY (uuid, currency)");
         }
     }
@@ -260,7 +296,11 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     private void createIndexIfMissing(Connection conn, String indexName, String createSql) throws SQLException {
-        if (hasIndex(conn, indexName)) {
+        createIndexIfMissing(conn, getTableName(), indexName, createSql);
+    }
+
+    private void createIndexIfMissing(Connection conn, String tableName, String indexName, String createSql) throws SQLException {
+        if (hasIndex(conn, tableName, indexName)) {
             return;
         }
         try (Statement statement = conn.createStatement()) {
@@ -269,8 +309,12 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     private boolean hasIndex(Connection conn, String indexName) throws SQLException {
+        return hasIndex(conn, getTableName(), indexName);
+    }
+
+    private boolean hasIndex(Connection conn, String tableName, String indexName) throws SQLException {
         String expected = indexName.toLowerCase(Locale.ROOT);
-        try (ResultSet rs = conn.getMetaData().getIndexInfo(conn.getCatalog(), null, getTableName(), false, false)) {
+        try (ResultSet rs = conn.getMetaData().getIndexInfo(conn.getCatalog(), null, tableName, false, false)) {
             while (rs.next()) {
                 String name = rs.getString("INDEX_NAME");
                 if (name != null && name.toLowerCase(Locale.ROOT).equals(expected)) {
@@ -360,7 +404,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     private void logSqlError(String action, SQLException e) {
         if (!isClosedDataSourceError(e)) {
-            plugin.getLogger().log(Level.SEVERE, action, e);
+            getLogger().log(Level.SEVERE, action, e);
         }
     }
 
@@ -393,30 +437,48 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         String name = "Unknown";
         int hidden = 0;
         try (Connection conn = getConnection()) {
-            try (PreparedStatement ps = conn.prepareStatement(existingInfoSql)) {
-                ps.setString(1, uuid.toString());
-                try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) {
-                        String existingName = rs.getString(COLUMN_USERNAME);
-                        name = (existingName == null || existingName.isBlank()) ? "Unknown" : existingName;
-                        hidden = rs.getInt(COLUMN_HIDDEN);
-                    } else {
-                        OfflinePlayer player = plugin.getServer().getOfflinePlayer(uuid);
-                        if (player.getName() != null && !player.getName().isBlank()) {
-                            name = player.getName();
+            boolean originalAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                try (PreparedStatement ps = conn.prepareStatement(existingInfoSql)) {
+                    ps.setString(1, uuid.toString());
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            String existingName = rs.getString(COLUMN_USERNAME);
+                            name = (existingName == null || existingName.isBlank()) ? "Unknown" : existingName;
+                            hidden = rs.getInt(COLUMN_HIDDEN);
+                        } else {
+                            String playerName = getOfflinePlayerName(uuid);
+                            if (playerName != null && !playerName.isBlank()) {
+                                name = playerName;
+                            }
                         }
                     }
                 }
-            }
 
-            try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
-                ps.setString(1, uuid.toString());
-                ps.setString(2, currency);
-                ps.setDouble(3, initialBalance);
-                ps.setString(4, name);
-                ps.setInt(5, hidden);
-                ps.setDouble(6, 0.0D);
-                return ps.executeUpdate() > 0;
+                try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+                    ps.setString(1, uuid.toString());
+                    ps.setString(2, currency);
+                    ps.setDouble(3, initialBalance);
+                    ps.setString(4, name);
+                    ps.setInt(5, hidden);
+                    ps.setDouble(6, 0.0D);
+                    if (ps.executeUpdate() == 0) {
+                        conn.rollback();
+                        return false;
+                    }
+                }
+                AccountSnapshot after = readAccountSnapshot(conn, uuid, currency);
+                AccountSnapshot before = new AccountSnapshot(name, 0.0D, 0.0D);
+                insertAudit(conn, UUID.randomUUID().toString(), uuid, currency,
+                        "CREATE_ACCOUNT", initialBalance, before, after);
+                conn.commit();
+                return true;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(originalAutoCommit);
             }
         } catch (SQLException e) {
             if (e.getErrorCode() == 19
@@ -446,7 +508,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             return false;
         }
         String sql = "UPDATE " + getTableName() + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "Deposit error", uuid, currency, amount);
+        return executeAccountUpdate(sql, "Deposit error", uuid, currency, "DEPOSIT", amount, amount);
     }
 
     @Override
@@ -455,7 +517,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             return false;
         }
         String sql = "UPDATE " + getTableName() + " SET balance = ? WHERE uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "UpdateBalance error", uuid, currency, amount);
+        return executeAccountUpdate(sql, "UpdateBalance error", uuid, currency, "SET_BALANCE", null, amount);
     }
 
     @Override
@@ -470,7 +532,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         }
         String sql = "UPDATE " + getTableName()
                 + " SET balance = balance - ? WHERE balance - frozen_balance >= ? AND uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "Withdraw error", uuid, currency, amount, amount);
+        return executeAccountUpdate(sql, "Withdraw error", uuid, currency, "WITHDRAW", -amount, amount, amount);
     }
 
     @Override
@@ -493,6 +555,12 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             conn.setAutoCommit(false);
             try (PreparedStatement psWithdraw = conn.prepareStatement(withdrawSql);
                  PreparedStatement psDeposit = conn.prepareStatement(depositSql)) {
+                AccountSnapshot fromBefore = readAccountSnapshot(conn, from, currency);
+                AccountSnapshot toBefore = readAccountSnapshot(conn, to, currency);
+                if (fromBefore == null || toBefore == null) {
+                    conn.rollback();
+                    return false;
+                }
                 psWithdraw.setDouble(1, withdrawAmount);
                 psWithdraw.setString(2, from.toString());
                 psWithdraw.setString(3, currency);
@@ -514,6 +582,11 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     return false;
                 }
 
+                String transactionId = UUID.randomUUID().toString();
+                AccountSnapshot fromAfter = readAccountSnapshot(conn, from, currency);
+                AccountSnapshot toAfter = readAccountSnapshot(conn, to, currency);
+                insertAudit(conn, transactionId, from, currency, "TRANSFER_OUT", -withdrawAmount, fromBefore, fromAfter);
+                insertAudit(conn, transactionId, to, currency, "TRANSFER_IN", depositAmount, toBefore, toAfter);
                 conn.commit();
                 return true;
             } catch (SQLException e) {
@@ -547,6 +620,12 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             conn.setAutoCommit(false);
             try (PreparedStatement psWithdraw = conn.prepareStatement(withdrawSql);
                  PreparedStatement psDeposit = conn.prepareStatement(depositSql)) {
+                AccountSnapshot fromBefore = readAccountSnapshot(conn, uuid, fromCurrency);
+                AccountSnapshot toBefore = readAccountSnapshot(conn, uuid, toCurrency);
+                if (fromBefore == null || toBefore == null) {
+                    conn.rollback();
+                    return false;
+                }
                 psWithdraw.setDouble(1, withdrawAmount);
                 psWithdraw.setString(2, uuid.toString());
                 psWithdraw.setString(3, fromCurrency);
@@ -568,6 +647,11 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     return false;
                 }
 
+                String transactionId = UUID.randomUUID().toString();
+                AccountSnapshot fromAfter = readAccountSnapshot(conn, uuid, fromCurrency);
+                AccountSnapshot toAfter = readAccountSnapshot(conn, uuid, toCurrency);
+                insertAudit(conn, transactionId, uuid, fromCurrency, "EXCHANGE_OUT", -withdrawAmount, fromBefore, fromAfter);
+                insertAudit(conn, transactionId, uuid, toCurrency, "EXCHANGE_IN", depositAmount, toBefore, toAfter);
                 conn.commit();
                 return true;
             } catch (SQLException e) {
@@ -598,7 +682,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             return false;
         }
         String sql = "UPDATE " + getTableName() + " SET frozen_balance = ? WHERE uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "UpdateFrozenBalance error", uuid, currency, amount);
+        return executeAccountUpdate(sql, "UpdateFrozenBalance error", uuid, currency, "SET_FROZEN", null, amount);
     }
 
     @Override
@@ -613,7 +697,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         }
         String sql = "UPDATE " + getTableName()
                 + " SET frozen_balance = frozen_balance + ? WHERE (balance - frozen_balance) >= ? AND uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "Freeze error", uuid, currency, amount, amount);
+        return executeAccountUpdate(sql, "Freeze error", uuid, currency, "FREEZE", amount, amount, amount);
     }
 
     @Override
@@ -623,7 +707,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         }
         String sql = "UPDATE " + getTableName()
                 + " SET frozen_balance = frozen_balance - ? WHERE frozen_balance >= ? AND uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "Unfreeze error", uuid, currency, amount, amount);
+        return executeAccountUpdate(sql, "Unfreeze error", uuid, currency, "UNFREEZE", -amount, amount, amount);
     }
 
     @Override
@@ -634,7 +718,8 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         String sql = "UPDATE " + getTableName()
                 + " SET balance = balance - ?, frozen_balance = frozen_balance - ? "
                 + "WHERE frozen_balance >= ? AND balance >= ? AND uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "DeductFrozen error", uuid, currency, amount, amount, amount, amount);
+        return executeAccountUpdate(sql, "DeductFrozen error", uuid, currency, "DEDUCT_FROZEN", -amount,
+                amount, amount, amount, amount);
     }
 
     @Override
@@ -648,6 +733,34 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         } catch (SQLException e) {
             logSqlError("UpdatePlayerName error", e);
         }
+    }
+
+    private void ensureAuditTable(Connection conn) throws SQLException {
+        String idColumn = isSQLite()
+                ? "INTEGER PRIMARY KEY AUTOINCREMENT"
+                : "BIGINT PRIMARY KEY AUTO_INCREMENT";
+        try (Statement statement = conn.createStatement()) {
+            statement.execute("CREATE TABLE IF NOT EXISTS " + AUDIT_TABLE_NAME + " ("
+                    + "id " + idColumn + ", "
+                    + "transaction_id VARCHAR(36) NOT NULL, "
+                    + "created_at BIGINT NOT NULL, "
+                    + "account_uuid VARCHAR(36) NOT NULL, "
+                    + "username VARCHAR(64) NOT NULL, "
+                    + "currency VARCHAR(32) NOT NULL, "
+                    + "operation VARCHAR(32) NOT NULL, "
+                    + "amount DOUBLE NOT NULL, "
+                    + "balance_before DOUBLE NOT NULL, "
+                    + "balance_after DOUBLE NOT NULL, "
+                    + "frozen_before DOUBLE NOT NULL, "
+                    + "frozen_after DOUBLE NOT NULL, "
+                    + "source VARCHAR(64) NOT NULL, "
+                    + "actor VARCHAR(64) NOT NULL)"
+            );
+        }
+        createIndexIfMissing(conn, AUDIT_TABLE_NAME, "idx_meoweco_audit_account_time",
+                "CREATE INDEX idx_meoweco_audit_account_time ON " + AUDIT_TABLE_NAME + " (account_uuid, created_at)");
+        createIndexIfMissing(conn, AUDIT_TABLE_NAME, "idx_meoweco_audit_time",
+                "CREATE INDEX idx_meoweco_audit_time ON " + AUDIT_TABLE_NAME + " (created_at)");
     }
 
     @Override
@@ -682,7 +795,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public Map<String, Double> getTopAccounts(String currency, int limit) {
-        plugin.debug("Database Query: getTopAccounts for currency '" + currency + "' limit " + limit
+        debug("Database Query: getTopAccounts for currency '" + currency + "' limit " + limit
                 + " (excluding hidden and 'tax' accounts)");
         Map<String, Double> top = new LinkedHashMap<>();
         String sql = "SELECT username, balance FROM " + getTableName()
@@ -696,7 +809,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     String user = rs.getString(COLUMN_USERNAME);
                     double balance = rs.getDouble(COLUMN_BALANCE);
                     top.put(user, balance);
-                    plugin.debug("Found top account: " + user + " = " + balance);
+                    debug("Found top account: " + user + " = " + balance);
                 }
             }
         } catch (SQLException e) {
@@ -809,6 +922,73 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         return false;
     }
 
+    @Override
+    public PrecisionReport reportPrecisionIssues(Map<String, Integer> currencyScales) {
+        if (currencyScales == null || currencyScales.isEmpty()) {
+            return PrecisionReport.empty();
+        }
+
+        List<CurrencyReport> reports = new ArrayList<>();
+        Set<UUID> affectedAccounts = new LinkedHashSet<>();
+        int totalBalances = 0;
+        int totalFrozenBalances = 0;
+        String sql = "SELECT uuid, balance, frozen_balance FROM " + getTableName() + " WHERE currency = ?";
+
+        try (Connection conn = getConnection()) {
+            for (Map.Entry<String, Integer> entry : currencyScales.entrySet()) {
+                String currencyId = entry.getKey();
+                int decimalPlaces = Math.max(0, entry.getValue());
+                Set<UUID> currencyAccounts = new LinkedHashSet<>();
+                int currencyBalances = 0;
+                int currencyFrozenBalances = 0;
+
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setString(1, currencyId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            UUID uuid;
+                            try {
+                                uuid = UUID.fromString(rs.getString(COLUMN_UUID));
+                            } catch (IllegalArgumentException ignored) {
+                                continue;
+                            }
+
+                            boolean balanceIssue = exceedsScale(rs.getDouble(COLUMN_BALANCE), decimalPlaces);
+                            boolean frozenIssue = exceedsScale(rs.getDouble(COLUMN_FROZEN_BALANCE), decimalPlaces);
+                            if (balanceIssue) {
+                                currencyBalances++;
+                                totalBalances++;
+                            }
+                            if (frozenIssue) {
+                                currencyFrozenBalances++;
+                                totalFrozenBalances++;
+                            }
+                            if (balanceIssue || frozenIssue) {
+                                currencyAccounts.add(uuid);
+                                affectedAccounts.add(uuid);
+                            }
+                        }
+                    }
+                }
+
+                if (!currencyAccounts.isEmpty()) {
+                    reports.add(new CurrencyReport(currencyId, decimalPlaces, currencyAccounts.size(), currencyBalances, currencyFrozenBalances));
+                }
+            }
+        } catch (SQLException e) {
+            logSqlError("ReportPrecisionIssues error", e);
+        }
+
+        return new PrecisionReport(affectedAccounts.size(), totalBalances, totalFrozenBalances, reports);
+    }
+
+    private boolean exceedsScale(double amount, int decimalPlaces) {
+        if (!Double.isFinite(amount)) {
+            return true;
+        }
+        return BigDecimal.valueOf(amount).stripTrailingZeros().scale() > decimalPlaces;
+    }
+
     private OptionalDouble findNumericColumn(UUID uuid, String currency, String column) {
         String sql = "SELECT " + column + " FROM " + getTableName() + " WHERE uuid = ? AND currency = ?";
         try (Connection conn = getConnection();
@@ -826,23 +1006,266 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         return OptionalDouble.empty();
     }
 
-    private boolean executeAccountUpdate(String sql, String errorMessage, UUID uuid, String currency, Object... params) {
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            int index = 1;
-            for (Object param : params) {
-                ps.setObject(index++, param);
+    private boolean executeAccountUpdate(String sql, String errorMessage, UUID uuid, String currency,
+                                         String operation, Double auditAmount, Object... params) {
+        try (Connection conn = getConnection()) {
+            boolean originalAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                AccountSnapshot before = readAccountSnapshot(conn, uuid, currency);
+                if (before == null) {
+                    conn.rollback();
+                    return false;
+                }
+
+                int index = 1;
+                for (Object param : params) {
+                    ps.setObject(index++, param);
+                }
+                ps.setString(index++, uuid.toString());
+                ps.setString(index, currency);
+                int rows = ps.executeUpdate();
+                if (rows == 0) {
+                    conn.rollback();
+                    debug("No rows updated for " + uuid + " / " + currency + " using SQL: " + sql);
+                    return false;
+                }
+
+                AccountSnapshot after = readAccountSnapshot(conn, uuid, currency);
+                double amount = auditAmount == null
+                        ? nonZeroDifference(after.balance() - before.balance(), after.frozen() - before.frozen())
+                        : auditAmount;
+                insertAudit(conn, UUID.randomUUID().toString(), uuid, currency, operation, amount, before, after);
+                conn.commit();
+                return true;
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(originalAutoCommit);
             }
-            ps.setString(index++, uuid.toString());
-            ps.setString(index, currency);
-            int rows = ps.executeUpdate();
-            if (rows == 0) {
-                plugin.debug("No rows updated for " + uuid + " / " + currency + " using SQL: " + sql);
-            }
-            return rows > 0;
         } catch (SQLException e) {
             logSqlError(errorMessage, e);
             return false;
+        }
+    }
+
+    @Override
+    public AuditScope openAuditScope(String source, String actor) {
+        AuditContext previous = auditContext.get();
+        auditContext.set(new AuditContext(cleanAuditText(source, "api"), cleanAuditText(actor, "system")));
+        return () -> auditContext.set(previous);
+    }
+
+    @Override
+    public List<AuditEntry> getAuditHistory(UUID uuid, String currency, int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 500));
+        String sql = "SELECT * FROM " + AUDIT_TABLE_NAME + " WHERE account_uuid = ?"
+                + (currency == null || currency.isBlank() ? "" : " AND currency = ?")
+                + " ORDER BY id DESC LIMIT ?";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            int index = 1;
+            ps.setString(index++, uuid.toString());
+            if (currency != null && !currency.isBlank()) {
+                ps.setString(index++, currency);
+            }
+            ps.setInt(index, safeLimit);
+            return readAuditEntries(ps);
+        } catch (SQLException e) {
+            logSqlError("Audit history query failed", e);
+            return List.of();
+        }
+    }
+
+    @Override
+    public List<AuditEntry> getRecentAudit(int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 10000));
+        String sql = "SELECT * FROM " + AUDIT_TABLE_NAME + " ORDER BY id DESC LIMIT ?";
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, safeLimit);
+            return readAuditEntries(ps);
+        } catch (SQLException e) {
+            logSqlError("Recent audit query failed", e);
+            return List.of();
+        }
+    }
+
+    @Override
+    public MigrationResult importBalances(List<MigrationBalance> balances, String currency, String source, String actor) {
+        if (currency == null || currency.isBlank() || balances == null || balances.isEmpty()) {
+            return MigrationResult.failed("No valid balances were supplied.");
+        }
+
+        Map<UUID, MigrationBalance> uniqueBalances = new LinkedHashMap<>();
+        for (MigrationBalance balance : balances) {
+            if (balance == null || balance.uuid() == null || !isNonNegativeFinite(balance.balance())) {
+                return MigrationResult.failed("Migration contains an invalid UUID or balance.");
+            }
+            uniqueBalances.put(balance.uuid(), balance);
+        }
+
+        String selectSql = "SELECT username, balance, frozen_balance FROM " + getTableName()
+                + " WHERE uuid = ? AND currency = ?";
+        String updateSql = "UPDATE " + getTableName() + " SET balance = ?, username = ? WHERE uuid = ? AND currency = ?";
+        String insertSql = "INSERT INTO " + getTableName()
+                + " (uuid, currency, balance, username, hidden, frozen_balance) VALUES (?, ?, ?, ?, 0, 0.0)";
+        String transactionId = UUID.randomUUID().toString();
+        AuditContext previousContext = auditContext.get();
+        auditContext.set(new AuditContext(cleanAuditText(source, "migration"), cleanAuditText(actor, "console")));
+
+        try (Connection conn = getConnection()) {
+            boolean originalAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            int created = 0;
+            int updated = 0;
+            double previousTotal = 0.0D;
+            double importedTotal = 0.0D;
+            try (PreparedStatement select = conn.prepareStatement(selectSql);
+                 PreparedStatement update = conn.prepareStatement(updateSql);
+                 PreparedStatement insert = conn.prepareStatement(insertSql)) {
+                for (MigrationBalance migration : uniqueBalances.values()) {
+                    String username = cleanUsername(migration.username());
+                    select.setString(1, migration.uuid().toString());
+                    select.setString(2, currency);
+                    AccountSnapshot before;
+                    try (ResultSet rs = select.executeQuery()) {
+                        if (rs.next()) {
+                            before = new AccountSnapshot(rs.getString(COLUMN_USERNAME),
+                                    rs.getDouble(COLUMN_BALANCE), rs.getDouble(COLUMN_FROZEN_BALANCE));
+                        } else {
+                            before = null;
+                        }
+                    }
+
+                    if (before == null) {
+                        insert.setString(1, migration.uuid().toString());
+                        insert.setString(2, currency);
+                        insert.setDouble(3, migration.balance());
+                        insert.setString(4, username);
+                        insert.executeUpdate();
+                        before = new AccountSnapshot(username, 0.0D, 0.0D);
+                        created++;
+                    } else {
+                        update.setDouble(1, migration.balance());
+                        update.setString(2, username);
+                        update.setString(3, migration.uuid().toString());
+                        update.setString(4, currency);
+                        update.executeUpdate();
+                        previousTotal += before.balance();
+                        updated++;
+                    }
+
+                    AccountSnapshot after = readAccountSnapshot(conn, migration.uuid(), currency);
+                    insertAudit(conn, transactionId, migration.uuid(), currency, "MIGRATE_SET",
+                            migration.balance() - before.balance(), before, after);
+                    importedTotal += migration.balance();
+                }
+                conn.commit();
+                return new MigrationResult(true, uniqueBalances.size(), created, updated,
+                        previousTotal, importedTotal, transactionId, "");
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(originalAutoCommit);
+            }
+        } catch (SQLException e) {
+            logSqlError("Transactional balance migration failed", e);
+            return MigrationResult.failed(e.getMessage());
+        } finally {
+            auditContext.set(previousContext);
+        }
+    }
+
+    private AccountSnapshot readAccountSnapshot(Connection conn, UUID uuid, String currency) throws SQLException {
+        String sql = "SELECT username, balance, frozen_balance FROM " + getTableName()
+                + " WHERE uuid = ? AND currency = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, currency);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    return null;
+                }
+                return new AccountSnapshot(rs.getString(COLUMN_USERNAME),
+                        rs.getDouble(COLUMN_BALANCE), rs.getDouble(COLUMN_FROZEN_BALANCE));
+            }
+        }
+    }
+
+    private void insertAudit(Connection conn, String transactionId, UUID uuid, String currency, String operation,
+                             double amount, AccountSnapshot before, AccountSnapshot after) throws SQLException {
+        if (before == null || after == null) {
+            throw new SQLException("Audit snapshot is missing for " + uuid + " / " + currency);
+        }
+        AuditContext context = auditContext.get();
+        String sql = "INSERT INTO " + AUDIT_TABLE_NAME
+                + " (transaction_id, created_at, account_uuid, username, currency, operation, amount,"
+                + " balance_before, balance_after, frozen_before, frozen_after, source, actor)"
+                + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, transactionId);
+            ps.setLong(2, System.currentTimeMillis());
+            ps.setString(3, uuid.toString());
+            ps.setString(4, cleanAuditText(after.username(), "Unknown"));
+            ps.setString(5, currency);
+            ps.setString(6, operation);
+            ps.setDouble(7, amount);
+            ps.setDouble(8, before.balance());
+            ps.setDouble(9, after.balance());
+            ps.setDouble(10, before.frozen());
+            ps.setDouble(11, after.frozen());
+            ps.setString(12, context.source());
+            ps.setString(13, context.actor());
+            ps.executeUpdate();
+        }
+    }
+
+    private List<AuditEntry> readAuditEntries(PreparedStatement ps) throws SQLException {
+        List<AuditEntry> entries = new ArrayList<>();
+        try (ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                entries.add(new AuditEntry(
+                        rs.getLong("id"),
+                        rs.getString("transaction_id"),
+                        Instant.ofEpochMilli(rs.getLong("created_at")),
+                        UUID.fromString(rs.getString("account_uuid")),
+                        rs.getString("username"),
+                        rs.getString("currency"),
+                        rs.getString("operation"),
+                        rs.getDouble("amount"),
+                        rs.getDouble("balance_before"),
+                        rs.getDouble("balance_after"),
+                        rs.getDouble("frozen_before"),
+                        rs.getDouble("frozen_after"),
+                        rs.getString("source"),
+                        rs.getString("actor")
+                ));
+            }
+        }
+        return entries;
+    }
+
+    private double nonZeroDifference(double balanceDifference, double frozenDifference) {
+        return Math.abs(balanceDifference) > 0.0000001D ? balanceDifference : frozenDifference;
+    }
+
+    private String cleanUsername(String username) {
+        String clean = username == null || username.isBlank() ? "Unknown" : username.trim();
+        return clean.length() <= 16 ? clean : clean.substring(0, 16);
+    }
+
+    private String cleanAuditText(String value, String fallback) {
+        String clean = value == null || value.isBlank() ? fallback : value.trim();
+        return clean.length() <= 64 ? clean : clean.substring(0, 64);
+    }
+
+    private record AccountSnapshot(String username, double balance, double frozen) {
+    }
+
+    private record AuditContext(String source, String actor) {
+        private static AuditContext system() {
+            return new AuditContext("api", "system");
         }
     }
 }

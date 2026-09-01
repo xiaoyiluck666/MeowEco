@@ -5,15 +5,7 @@ pluginManagement {
         maven("https://maven.aliyun.com/repository/gradle-plugin")
         maven("https://maven.aliyun.com/repository/public")
         gradlePluginPortal()
-        maven("https://maven.fabricmc.net/")
         mavenCentral()
-    }
-    resolutionStrategy {
-        eachPlugin {
-            if (requested.id.id == "net.fabricmc.fabric-loom") {
-                useModule("net.fabricmc:fabric-loom:${requested.version}")
-            }
-        }
     }
 }
 
@@ -21,8 +13,16 @@ dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
         mavenLocal()
-        maven("https://maven.aliyun.com/repository/public")
-        maven("https://maven.aliyun.com/repository/central")
+        maven("https://maven.aliyun.com/repository/public") {
+            content {
+                excludeGroupByRegex("net\\.kyori(\\..*)?")
+            }
+        }
+        maven("https://maven.aliyun.com/repository/central") {
+            content {
+                excludeGroupByRegex("net\\.kyori(\\..*)?")
+            }
+        }
         mavenCentral()
         maven("https://repo.papermc.io/repository/maven-public/") {
             content {
@@ -45,14 +45,8 @@ dependencyResolutionManagement {
                 includeGroupByRegex("com\\.github\\..*")
             }
         }
-        maven("https://maven.fabricmc.net/") {
-            content {
-                includeGroupByRegex("net\\.fabricmc(\\..*)?")
-            }
-        }
     }
 }
 
 include(":meoweco-core")
 include(":meoweco-paper")
-include(":meoweco-fabric")

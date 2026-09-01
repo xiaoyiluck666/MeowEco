@@ -3,6 +3,7 @@ package com.xiaoyiluck.meoweco.commands;
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.EconomyService;
+import com.xiaoyiluck.meoweco.utils.AmountInput;
 import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
@@ -89,6 +90,10 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 sender.sendMessage(plugin.getConfigManager().getComponent("invalid-currency"));
                 return true;
             }
+            if (!Double.isFinite(rate) || rate <= 0.0D) {
+                sender.sendMessage(plugin.getConfigManager().getComponent("invalid-amount"));
+                return true;
+            }
 
             plugin.setExchangeRate(fromId, toId, rate);
             sender.sendMessage(plugin.getConfigManager().getComponent("eco-setrate-success")
@@ -111,6 +116,7 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 if (plugin.getBaltopCommand() != null) {
                     plugin.getBaltopCommand().invalidateCache();
                 }
+                plugin.invalidateVaultEconomyCache();
 
                 java.util.Map<java.util.UUID, String> unknowns = plugin.getDatabaseManager().getUnknownAccounts();
                 int fixed = 0;
@@ -236,46 +242,51 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
         }
+        if (!AmountInput.fitsCurrencyScaleOrNotify(plugin, sender, amount, currency)) {
+            return true;
+        }
 
         final double finalAmount = amount;
         final Currency finalCurrency = currency;
         final OfflinePlayer finalTarget = target;
         final String targetName = PlayerLookup.getDisplayName(target, args[1]);
+        final String actorName = sender.getName();
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            if (!plugin.getDatabaseManager().hasAccount(finalTarget.getUniqueId(), finalCurrency.getId())) {
-                plugin.getDatabaseManager().createAccount(finalTarget.getUniqueId(), finalCurrency.getId(), 0);
-            }
-
             String msgKey;
             boolean success;
-            switch (sub) {
-                case "give":
-                    success = economyService.applyAdminOperation("give", finalTarget.getUniqueId(), finalCurrency, finalAmount);
-                    msgKey = "eco-give";
-                    break;
-                case "take":
-                    success = economyService.applyAdminOperation("take", finalTarget.getUniqueId(), finalCurrency, finalAmount);
-                    msgKey = "eco-take";
-                    break;
-                case "set":
-                    success = economyService.applyAdminOperation("set", finalTarget.getUniqueId(), finalCurrency, finalAmount);
-                    msgKey = "eco-set";
-                    break;
-                case "freeze":
-                    success = economyService.applyAdminOperation("freeze", finalTarget.getUniqueId(), finalCurrency, finalAmount);
-                    msgKey = "eco-freeze-success";
-                    break;
-                case "unfreeze":
-                    success = economyService.applyAdminOperation("unfreeze", finalTarget.getUniqueId(), finalCurrency, finalAmount);
-                    msgKey = "eco-unfreeze-success";
-                    break;
-                case "deductfrozen":
-                    success = economyService.applyAdminOperation("deductfrozen", finalTarget.getUniqueId(), finalCurrency, finalAmount);
-                    msgKey = "eco-deductfrozen-success";
-                    break;
-                default:
-                    return;
+            try (var ignored = plugin.getDatabaseManager().openAuditScope("command." + sub, actorName)) {
+                if (!plugin.getDatabaseManager().hasAccount(finalTarget.getUniqueId(), finalCurrency.getId())) {
+                    plugin.getDatabaseManager().createAccount(finalTarget.getUniqueId(), finalCurrency.getId(), 0);
+                }
+                switch (sub) {
+                    case "give":
+                        success = economyService.applyAdminOperation("give", finalTarget.getUniqueId(), finalCurrency, finalAmount);
+                        msgKey = "eco-give";
+                        break;
+                    case "take":
+                        success = economyService.applyAdminOperation("take", finalTarget.getUniqueId(), finalCurrency, finalAmount);
+                        msgKey = "eco-take";
+                        break;
+                    case "set":
+                        success = economyService.applyAdminOperation("set", finalTarget.getUniqueId(), finalCurrency, finalAmount);
+                        msgKey = "eco-set";
+                        break;
+                    case "freeze":
+                        success = economyService.applyAdminOperation("freeze", finalTarget.getUniqueId(), finalCurrency, finalAmount);
+                        msgKey = "eco-freeze-success";
+                        break;
+                    case "unfreeze":
+                        success = economyService.applyAdminOperation("unfreeze", finalTarget.getUniqueId(), finalCurrency, finalAmount);
+                        msgKey = "eco-unfreeze-success";
+                        break;
+                    case "deductfrozen":
+                        success = economyService.applyAdminOperation("deductfrozen", finalTarget.getUniqueId(), finalCurrency, finalAmount);
+                        msgKey = "eco-deductfrozen-success";
+                        break;
+                    default:
+                        return;
+                }
             }
 
             final String finalMsgKey = msgKey;
@@ -292,7 +303,7 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                     } else if (sub.equals("deductfrozen")) {
                         sender.sendMessage(plugin.getConfigManager().getComponent("deductfrozen-failed-balance"));
                     } else {
-                        sender.sendMessage(Component.text("§c操作失败：无法更新数据库。请检查后台日志。"));
+                        sender.sendMessage(Component.text("§cOperation failed. Check the server log for database errors."));
                     }
                     return;
                 }
@@ -300,6 +311,7 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 if (plugin.getBaltopCommand() != null) {
                     plugin.getBaltopCommand().invalidateCache();
                 }
+                plugin.invalidateVaultEconomyCache(finalTarget.getUniqueId(), finalCurrency.getId());
 
                 Component msg = plugin.getConfigManager().getComponent(finalMsgKey)
                         .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(targetName).build())

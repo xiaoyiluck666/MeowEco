@@ -2,6 +2,7 @@ package com.xiaoyiluck.meoweco.api;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.service.MoneyAmountPolicy;
 import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
@@ -10,8 +11,11 @@ import org.bukkit.OfflinePlayer;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MeowEconomy implements Economy {
+    private static final long VAULT_BALANCE_CACHE_TTL_MS = 500L;
+    private final ConcurrentHashMap<String, VaultBalanceSnapshot> defaultCurrencyBalanceCache = new ConcurrentHashMap<>();
 
     // We don't store the plugin instance anymore to support hot reloading
     // Instead we use the static instance from MeowEco
@@ -56,6 +60,29 @@ public class MeowEconomy implements Economy {
         return plugin.getDatabaseManager().findFrozenBalance(uuid, currencyId).orElse(0.0D);
     }
 
+    private VaultBalanceSnapshot getDefaultCurrencyBalanceSnapshot(MeowEco plugin, UUID uuid, String currencyId) {
+        long now = System.currentTimeMillis();
+        String cacheKey = uuid + ":" + currencyId;
+        VaultBalanceSnapshot cached = defaultCurrencyBalanceCache.get(cacheKey);
+        if (cached != null && now - cached.timestampMs <= VAULT_BALANCE_CACHE_TTL_MS) {
+            return cached;
+        }
+
+        VaultBalanceSnapshot fresh = new VaultBalanceSnapshot(
+                getStoredBalance(plugin, uuid, currencyId),
+                getStoredFrozenBalance(plugin, uuid, currencyId),
+                now
+        );
+        defaultCurrencyBalanceCache.put(cacheKey, fresh);
+        return fresh;
+    }
+
+    private void invalidateDefaultCurrencyBalance(UUID uuid, String currencyId) {
+        if (uuid != null && currencyId != null) {
+            defaultCurrencyBalanceCache.remove(uuid + ":" + currencyId);
+        }
+    }
+
     private OfflinePlayer resolveOfflinePlayer(MeowEco plugin, String playerName) {
         if (plugin == null) {
             return null;
@@ -65,6 +92,29 @@ public class MeowEconomy implements Economy {
 
     private EconomyResponse playerNotFoundResponse() {
         return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Player not found");
+    }
+
+    private double normalizeDefaultCurrencyAmount(MeowEco plugin, double amount) {
+        Currency currency = resolveDefaultCurrency(plugin);
+        if (!MoneyAmountPolicy.isValidPositiveInput(amount, currency)) {
+            return Double.NaN;
+        }
+        return MoneyAmountPolicy.roundForStorage(amount, currency);
+    }
+
+    public void invalidateCache(UUID uuid, String currencyId) {
+        invalidateDefaultCurrencyBalance(uuid, currencyId);
+    }
+
+    public void invalidateCache(UUID uuid) {
+        if (uuid != null) {
+            String cacheKeyPrefix = uuid + ":";
+            defaultCurrencyBalanceCache.keySet().removeIf(key -> key.startsWith(cacheKeyPrefix));
+        }
+    }
+
+    public void invalidateAllCache() {
+        defaultCurrencyBalanceCache.clear();
     }
 
     @Override
@@ -124,9 +174,8 @@ public class MeowEconomy implements Economy {
         if (!isEnabled()) return false;
         MeowEco plugin = getPlugin();
         String currencyId = resolveDefaultCurrencyId(plugin);
-        double total = getStoredBalance(plugin, player.getUniqueId(), currencyId);
-        double frozen = getStoredFrozenBalance(plugin, player.getUniqueId(), currencyId);
-        return (total - frozen) >= amount;
+        VaultBalanceSnapshot snapshot = getDefaultCurrencyBalanceSnapshot(plugin, player.getUniqueId(), currencyId);
+        return snapshot.available() >= amount;
     }
 
     @Override
@@ -174,7 +223,8 @@ public class MeowEconomy implements Economy {
     public double getBalance(OfflinePlayer player) {
         if (!isEnabled()) return 0.0;
         MeowEco plugin = getPlugin();
-        return getStoredBalance(plugin, player.getUniqueId(), resolveDefaultCurrencyId(plugin));
+        String currencyId = resolveDefaultCurrencyId(plugin);
+        return getDefaultCurrencyBalanceSnapshot(plugin, player.getUniqueId(), currencyId).balance;
     }
 
     @Override
@@ -199,7 +249,12 @@ public class MeowEconomy implements Economy {
         if (!isEnabled()) return false;
         MeowEco plugin = getPlugin();
         Currency def = resolveDefaultCurrency(plugin);
-        return plugin.getDatabaseManager().createAccount(player.getUniqueId(), def.getId(), def.getInitialBalance());
+        boolean success;
+        try (var ignored = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
+            success = plugin.getDatabaseManager().createAccount(player.getUniqueId(), def.getId(), def.getInitialBalance());
+        }
+        invalidateDefaultCurrencyBalance(player.getUniqueId(), def.getId());
+        return success;
     }
 
     @Override
@@ -224,16 +279,22 @@ public class MeowEconomy implements Economy {
         if (!isEnabled()) {
             return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Plugin is disabled");
         }
-        if (!Double.isFinite(amount) || amount <= 0) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Amount must be greater than 0");
-        }
-        
         MeowEco plugin = getPlugin();
-        boolean success = plugin.getDatabaseManager().withdraw(player.getUniqueId(), resolveDefaultCurrencyId(plugin), amount);
+        double normalizedAmount = normalizeDefaultCurrencyAmount(plugin, amount);
+        if (!Double.isFinite(normalizedAmount)) {
+            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Amount must be greater than 0 and fit currency precision");
+        }
+
+        String currencyId = resolveDefaultCurrencyId(plugin);
+        boolean success;
+        try (var ignored = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
+            success = plugin.getDatabaseManager().withdraw(player.getUniqueId(), currencyId, normalizedAmount);
+        }
+        invalidateDefaultCurrencyBalance(player.getUniqueId(), currencyId);
         double balance = getBalance(player);
         
         if (success) {
-            return new EconomyResponse(amount, balance, EconomyResponse.ResponseType.SUCCESS, null);
+            return new EconomyResponse(normalizedAmount, balance, EconomyResponse.ResponseType.SUCCESS, null);
         } else {
             return new EconomyResponse(0, balance, EconomyResponse.ResponseType.FAILURE, "Insufficient funds");
         }
@@ -261,15 +322,21 @@ public class MeowEconomy implements Economy {
         if (!isEnabled()) {
             return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Plugin is disabled");
         }
-        if (!Double.isFinite(amount) || amount <= 0) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Amount must be greater than 0");
-        }
-        
         MeowEco plugin = getPlugin();
-        boolean success = plugin.getDatabaseManager().deposit(player.getUniqueId(), resolveDefaultCurrencyId(plugin), amount);
+        double normalizedAmount = normalizeDefaultCurrencyAmount(plugin, amount);
+        if (!Double.isFinite(normalizedAmount)) {
+            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Amount must be greater than 0 and fit currency precision");
+        }
+
+        String currencyId = resolveDefaultCurrencyId(plugin);
+        boolean success;
+        try (var ignored = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
+            success = plugin.getDatabaseManager().deposit(player.getUniqueId(), currencyId, normalizedAmount);
+        }
+        invalidateDefaultCurrencyBalance(player.getUniqueId(), currencyId);
         double balance = getBalance(player);
         if (success) {
-            return new EconomyResponse(amount, balance, EconomyResponse.ResponseType.SUCCESS, null);
+            return new EconomyResponse(normalizedAmount, balance, EconomyResponse.ResponseType.SUCCESS, null);
         }
         return new EconomyResponse(0, balance, EconomyResponse.ResponseType.FAILURE, "Account not found or database error");
     }
@@ -343,5 +410,11 @@ public class MeowEconomy implements Economy {
     @Override
     public List<String> getBanks() {
         return Collections.emptyList();
+    }
+
+    private record VaultBalanceSnapshot(double balance, double frozen, long timestampMs) {
+        private double available() {
+            return balance - frozen;
+        }
     }
 }

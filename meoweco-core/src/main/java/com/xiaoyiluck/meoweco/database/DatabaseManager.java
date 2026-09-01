@@ -1,5 +1,6 @@
 package com.xiaoyiluck.meoweco.database;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -66,4 +67,24 @@ public interface DatabaseManager {
     boolean isHidden(UUID uuid);
 
     Map<UUID, String> getUnknownAccounts();
+
+    default PrecisionReport reportPrecisionIssues(Map<String, Integer> currencyScales) {
+        return PrecisionReport.empty();
+    }
+
+    default AuditScope openAuditScope(String source, String actor) {
+        return AuditScope.noop();
+    }
+
+    default List<AuditEntry> getAuditHistory(UUID uuid, String currency, int limit) {
+        return List.of();
+    }
+
+    default List<AuditEntry> getRecentAudit(int limit) {
+        return List.of();
+    }
+
+    default MigrationResult importBalances(List<MigrationBalance> balances, String currency, String source, String actor) {
+        return MigrationResult.failed("This storage backend does not support transactional migration.");
+    }
 }

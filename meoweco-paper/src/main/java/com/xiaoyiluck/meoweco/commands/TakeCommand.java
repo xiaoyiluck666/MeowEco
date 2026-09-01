@@ -2,6 +2,7 @@ package com.xiaoyiluck.meoweco.commands;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.utils.AmountInput;
 import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
@@ -65,6 +66,9 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
                 return true;
             }
         }
+        if (!AmountInput.fitsCurrencyScaleOrNotify(plugin, sender, amount, currency)) {
+            return true;
+        }
 
         final double finalAmount = amount;
         final Currency finalCurrency = currency;
@@ -81,7 +85,10 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
                 return;
             }
 
-            boolean success = plugin.getDatabaseManager().withdraw(target.getUniqueId(), finalCurrency.getId(), finalAmount);
+            boolean success;
+            try (var ignored = plugin.getDatabaseManager().openAuditScope("command.take", senderName)) {
+                success = plugin.getDatabaseManager().withdraw(target.getUniqueId(), finalCurrency.getId(), finalAmount);
+            }
             
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (!success) {
@@ -93,6 +100,7 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
                 if (plugin.getBaltopCommand() != null) {
                     plugin.getBaltopCommand().invalidateCache();
                 }
+                plugin.invalidateVaultEconomyCache(target.getUniqueId(), finalCurrency.getId());
 
                 Component senderMsg = senderMsgTemplate
                         .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(targetName).build())

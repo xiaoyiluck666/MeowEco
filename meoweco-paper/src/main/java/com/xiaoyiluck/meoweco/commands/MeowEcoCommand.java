@@ -1,6 +1,8 @@
 package com.xiaoyiluck.meoweco.commands;
 
 import com.xiaoyiluck.meoweco.MeowEco;
+import com.xiaoyiluck.meoweco.database.PrecisionReport;
+import com.xiaoyiluck.meoweco.objects.Currency;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -13,7 +15,9 @@ import org.bukkit.command.TabCompleter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MeowEcoCommand implements CommandExecutor, TabCompleter {
 
@@ -23,6 +27,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
     private final TakeCommand takeCommand;
     private final EcoCommand ecoCommand;
     private final BaltopCommand baltopCommand;
+    private final DataCommand dataCommand;
 
     public MeowEcoCommand(MeowEco plugin) {
         this.plugin = plugin;
@@ -31,6 +36,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
         this.takeCommand = new TakeCommand(plugin);
         this.ecoCommand = new EcoCommand(plugin);
         this.baltopCommand = new BaltopCommand(plugin);
+        this.dataCommand = new DataCommand(plugin);
     }
 
     public MoneyCommand getMoneyCommand() {
@@ -96,6 +102,12 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 plugin.reload();
                 sender.sendMessage(plugin.getConfigManager().getComponent("reload-success"));
                 return true;
+            case "precision":
+                return handlePrecision(sender, subArgs);
+            case "migrate":
+                return dataCommand.handleMigration(sender, subArgs);
+            case "audit":
+                return dataCommand.handleAudit(sender, subArgs);
             case "checkupdate":
                 if (!sender.hasPermission("meoweco.admin")) {
                     sender.sendMessage(plugin.getConfigManager().getComponent("no-permission"));
@@ -154,6 +166,48 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private boolean handlePrecision(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("meoweco.admin")) {
+            sender.sendMessage(plugin.getConfigManager().getComponent("no-permission"));
+            return true;
+        }
+        if (args.length == 0 || !args[0].equalsIgnoreCase("report")) {
+            sender.sendMessage(Component.text("§cUsage: /meco precision report"));
+            return true;
+        }
+
+        sender.sendMessage(Component.text("§eScanning stored balances for precision issues..."));
+        Map<String, Integer> scales = new LinkedHashMap<>();
+        for (Currency currency : plugin.getCurrencies().values()) {
+            scales.put(currency.getId(), Math.max(0, currency.getDecimalPlaces()));
+        }
+
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            PrecisionReport report = plugin.getDatabaseManager().reportPrecisionIssues(scales);
+            plugin.getServer().getScheduler().runTask(plugin, () -> sendPrecisionReport(sender, report));
+        });
+        return true;
+    }
+
+    private void sendPrecisionReport(CommandSender sender, PrecisionReport report) {
+        if (!report.hasIssues()) {
+            sender.sendMessage(Component.text("§aNo stored balance precision issues found."));
+            return;
+        }
+
+        sender.sendMessage(Component.text("§eStored balance precision issues found:"));
+        sender.sendMessage(Component.text("§7Affected accounts: §f" + report.affectedAccounts()
+                + " §7balances: §f" + report.affectedBalances()
+                + " §7frozen: §f" + report.affectedFrozenBalances()));
+        for (PrecisionReport.CurrencyReport currency : report.currencies()) {
+            sender.sendMessage(Component.text("§7- §e" + currency.currencyId()
+                    + " §7(max decimals " + currency.decimalPlaces() + "): accounts §f" + currency.affectedAccounts()
+                    + "§7, balances §f" + currency.affectedBalances()
+                    + "§7, frozen §f" + currency.affectedFrozenBalances()));
+        }
+        sender.sendMessage(Component.text("§7Report mode only. No balances were changed."));
+    }
+
     private void sendHelp(CommandSender sender) {
         sender.sendMessage(plugin.getConfigManager().getComponent("help-header"));
         sender.sendMessage(plugin.getConfigManager().getComponent("help-bal"));
@@ -173,6 +227,9 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(plugin.getConfigManager().getComponent("help-admin-reload"));
             sender.sendMessage(plugin.getConfigManager().getComponent("help-admin-checkupdate"));
             sender.sendMessage(plugin.getConfigManager().getComponent("help-admin-debug"));
+            sender.sendMessage(Component.text("§c/meco precision report §7- Scan old over-precision balances"));
+            sender.sendMessage(Component.text("§c/meco migrate ... §7- Preview or import balances from another economy"));
+            sender.sendMessage(Component.text("§c/meco audit ... §7- View or export transaction history"));
         }
     }
 
@@ -184,7 +241,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 subs.add("exchange");
             }
             if (sender.hasPermission("meoweco.admin")) {
-                subs.addAll(List.of("give", "take", "set", "freeze", "unfreeze", "deductfrozen", "setrate", "reload", "debug", "refresh", "hide", "unhide", "checkupdate"));
+                subs.addAll(List.of("give", "take", "set", "freeze", "unfreeze", "deductfrozen", "setrate", "reload", "debug", "refresh", "hide", "unhide", "checkupdate", "precision", "migrate", "audit"));
             }
             String prefix = args[0].toLowerCase();
             return subs.stream().filter(s -> s.startsWith(prefix)).toList();
@@ -223,6 +280,15 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                     return List.of("currencies").stream().filter(s -> s.startsWith(subArgs[0].toLowerCase())).toList();
                 }
                 return Collections.emptyList();
+            case "precision":
+                if (subArgs.length == 1) {
+                    return List.of("report").stream().filter(s -> s.startsWith(subArgs[0].toLowerCase())).toList();
+                }
+                return Collections.emptyList();
+            case "migrate":
+                return dataCommand.tabCompleteMigration(subArgs);
+            case "audit":
+                return dataCommand.tabCompleteAudit(subArgs);
             case "exchange":
                 String[] exchangeArgs = new String[args.length];
                 exchangeArgs[0] = "exchange";

@@ -44,7 +44,7 @@ public final class RichTaxEngine {
                     continue;
                 }
 
-                double taxAmount = taxableAmount * rule.rate();
+                double taxAmount = MoneyAmountPolicy.roundForStorage(taxableAmount * rule.rate(), currency);
                 if (!Double.isFinite(taxAmount) || taxAmount <= 0.0D) {
                     continue;
                 }
