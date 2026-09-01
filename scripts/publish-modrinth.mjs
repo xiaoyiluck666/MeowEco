@@ -118,7 +118,7 @@ async function updateProject(token) {
     headers: authHeaders(token, 'application/json'),
     body: JSON.stringify({
       title: 'MeowEco Economy',
-      description: 'A controllable multi-currency Paper economy with seamless migration, transaction audit, rich tax, frozen funds, Vault, and SQL storage.',
+      description: 'Multi-currency Paper economy with no-reset Vault/EssentialsX/CSV migration, transaction audit, inflation controls, Vault, SQLite, and MySQL.',
       body: projectBody,
       source_url: 'https://github.com/xiaoyiluck666/MeowEco',
       issues_url: 'https://github.com/xiaoyiluck666/MeowEco/issues',
