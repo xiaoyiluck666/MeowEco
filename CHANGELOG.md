@@ -30,20 +30,6 @@ This file now serves as the running changelog for MeowEco.
 
 - None.
 
-## Policy Observability - 2026-09-06
-
-### Added
-
-- Added read-only `/meco policy report` output for per-currency total supply, circulating balance, account count, Top 1/Top 10 wealth concentration, and configured rich-tax rules.
-
-### Changed
-
-- Added database aggregate hooks for account counts and circulating balances so policy reports run asynchronously without loading every account into memory.
-
-### Fixed
-
-- None.
-
 ## Policy Report - 2026-09-06
 
 ### Added
