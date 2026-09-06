@@ -22,7 +22,18 @@ final class PolicyCommand {
             sender.sendMessage(plugin.getConfigManager().getComponent("no-permission"));
             return true;
         }
-        sender.sendMessage(Component.text("§bMeowEco monetary policy report (read-only)"));
+        Component header = plugin.getConfigManager().getComponent("policy-report-header");
+        Component rowTemplate = plugin.getConfigManager().getComponent("policy-report-row");
+        Component noCurrencies = plugin.getConfigManager().getComponent("policy-report-no-currencies");
+        Component richTaxTemplate = plugin.getConfigManager().getComponent("policy-report-rich-tax");
+        Component richTaxRuleTemplate = plugin.getConfigManager().getComponent("policy-report-rich-tax-rule");
+        Component footer = plugin.getConfigManager().getComponent("policy-report-footer");
+        Component enabledLabel = plugin.getConfigManager().getMessageComponent("policy-status-enabled");
+        Component disabledLabel = plugin.getConfigManager().getMessageComponent("policy-status-disabled");
+        Component systemLabel = plugin.getConfigManager().getMessageComponent("policy-destination-system");
+        Component playerLabel = plugin.getConfigManager().getMessageComponent("policy-destination-player");
+
+        sender.sendMessage(header);
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             List<PolicyRow> rows = new ArrayList<>();
             for (Currency currency : plugin.getCurrencies().values()) {
@@ -42,27 +53,33 @@ final class PolicyCommand {
                     Currency currency = plugin.getCurrency(row.currencyId());
                     String total = currency == null ? String.valueOf(row.total()) : plugin.formatBalance(row.total(), currency);
                     String available = currency == null ? String.valueOf(row.available()) : plugin.formatBalance(row.available(), currency);
-                    sender.sendMessage(Component.text("§e" + row.currencyId()
-                            + " §7accounts=§f" + row.accounts()
-                            + " §7total=§f" + total
-                            + " §7circulating=§f" + available
-                            + " §7top1=§f" + formatPercent(row.top1Percent())
-                            + " §7top10=§f" + formatPercent(row.top10Percent())));
+                    sender.sendMessage(rowTemplate
+                            .replaceText(config -> config.matchLiteral("%currency%").replacement(row.currencyId()))
+                            .replaceText(config -> config.matchLiteral("%accounts%").replacement(String.valueOf(row.accounts())))
+                            .replaceText(config -> config.matchLiteral("%total%").replacement(total))
+                            .replaceText(config -> config.matchLiteral("%circulating%").replacement(available))
+                            .replaceText(config -> config.matchLiteral("%top1%").replacement(formatPercent(row.top1Percent())))
+                            .replaceText(config -> config.matchLiteral("%top10%").replacement(formatPercent(row.top10Percent()))));
                 }
                 if (rows.isEmpty()) {
-                    sender.sendMessage(Component.text("§7No currencies are configured."));
+                    sender.sendMessage(noCurrencies);
                 }
-                sendRichTaxPolicy(sender);
-                sender.sendMessage(Component.text("§7Report only: no balances or configuration were changed."));
+                sendRichTaxPolicy(sender, richTaxTemplate, richTaxRuleTemplate, enabledLabel, disabledLabel, systemLabel, playerLabel);
+                sender.sendMessage(footer);
             });
         });
         return true;
     }
 
-    private void sendRichTaxPolicy(CommandSender sender) {
+    private void sendRichTaxPolicy(CommandSender sender, Component summaryTemplate, Component ruleTemplate,
+                                   Component enabledLabel, Component disabledLabel,
+                                   Component systemLabel, Component playerLabel) {
         boolean enabled = plugin.getConfig().getBoolean("rich-tax.enabled", false);
-        sender.sendMessage(Component.text("§7rich-tax=§f" + (enabled ? "enabled" : "disabled")
-                + " §7destination=§f" + plugin.getConfig().getString("rich-tax.destination.type", "system")));
+        String destination = plugin.getConfig().getString("rich-tax.destination.type", "system");
+        Component destinationLabel = "player".equalsIgnoreCase(destination) ? playerLabel : systemLabel;
+        sender.sendMessage(summaryTemplate
+                .replaceText(config -> config.matchLiteral("%status%").replacement(enabled ? enabledLabel : disabledLabel))
+                .replaceText(config -> config.matchLiteral("%destination%").replacement(destinationLabel)));
         org.bukkit.configuration.ConfigurationSection rules = plugin.getConfig().getConfigurationSection("rich-tax.currencies");
         if (rules == null) {
             return;
@@ -72,10 +89,12 @@ final class PolicyCommand {
             if (rule == null) {
                 continue;
             }
-            sender.sendMessage(Component.text("§7- " + id.toLowerCase(Locale.ROOT)
-                    + " threshold=§f" + rule.getDouble("threshold", 0.0D)
-                    + " §7rate=§f" + formatPercent(rule.getDouble("rate", 0.0D) * 100.0D)
-                    + " §7enabled=§f" + rule.getBoolean("enabled", true)));
+            Component enabledValue = rule.getBoolean("enabled", true) ? enabledLabel : disabledLabel;
+            sender.sendMessage(ruleTemplate
+                    .replaceText(config -> config.matchLiteral("%currency%").replacement(id.toLowerCase(Locale.ROOT)))
+                    .replaceText(config -> config.matchLiteral("%threshold%").replacement(String.valueOf(rule.getDouble("threshold", 0.0D))))
+                    .replaceText(config -> config.matchLiteral("%rate%").replacement(formatPercent(rule.getDouble("rate", 0.0D) * 100.0D)))
+                    .replaceText(config -> config.matchLiteral("%enabled%").replacement(enabledValue)));
         }
     }
 

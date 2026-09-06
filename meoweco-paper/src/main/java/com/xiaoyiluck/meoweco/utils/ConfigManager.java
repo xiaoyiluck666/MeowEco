@@ -164,6 +164,13 @@ public class ConfigManager {
         return parseColor(prefix + msg);
     }
 
+    /** Returns a localized message without the configured chat prefix. */
+    public Component getMessageComponent(String key) {
+        String msg = messagesConfig.getString(key);
+        if (msg == null) return Component.text("Missing message: " + key);
+        return parseColor(msg);
+    }
+
     @Deprecated
     public String getMessage(String key) {
         if ("prefix".equalsIgnoreCase(key)) {

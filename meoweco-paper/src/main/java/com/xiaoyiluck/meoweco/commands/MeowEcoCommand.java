@@ -114,7 +114,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 if (subArgs.length == 1 && subArgs[0].equalsIgnoreCase("report")) {
                     return policyCommand.handleReport(sender);
                 }
-                sender.sendMessage(Component.text("§cUsage: /meco policy report"));
+                sender.sendMessage(plugin.getConfigManager().getComponent("policy-report-usage"));
                 return true;
             case "checkupdate":
                 if (!sender.hasPermission("meoweco.admin")) {

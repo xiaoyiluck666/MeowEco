@@ -2,6 +2,21 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## v26.10.1 - 2026-09-06
+
+### Added
+
+- Added customizable English and Simplified Chinese message templates for `/meco policy report`, including report fields, rich-tax status, destination labels, and usage text.
+
+### Changed
+
+- Policy report output now follows `messages.language` and reloads custom labels from `plugins/MeowEco/lang/` after `/meco reload`.
+- Bumped the project version to `26.10.1` for the localized policy report release.
+
+### Fixed
+
+- Removed hard-coded English labels from the monetary policy report output.
+
 ## Maintenance - 2026-09-02
 
 ### Added
@@ -43,6 +58,20 @@ This file now serves as the running changelog for MeowEco.
 ### Fixed
 
 - None.
+
+## Policy Report Localization - 2026-09-06
+
+### Added
+
+- Added customizable English and Simplified Chinese message templates for `/meco policy report`, including report fields, rich-tax status, destination labels, and usage text.
+
+### Changed
+
+- Policy report output now follows `messages.language` and reloads custom labels from `plugins/MeowEco/lang/` after `/meco reload`.
+
+### Fixed
+
+- Removed hard-coded English labels from the monetary policy report output.
 
 ## v26.10.0 - 2026-09-01
 

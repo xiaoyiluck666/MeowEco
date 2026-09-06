@@ -75,6 +75,8 @@ Use `/meco policy report` as a read-only checkpoint before changing tax or sink 
 
 This turns “fight inflation” into an operating loop: measure supply and concentration, adjust a policy lever, then compare the next report and audit entries. Rich tax removes or redirects the amount above each threshold; it does not rewrite prices or guarantee a fixed value by itself.
 
+The report follows the active `en_US` or `zh_CN` language file, and every report label can be translated or customized in `plugins/MeowEco/lang/`.
+
 ## A Practical Fit For
 
 - Survival servers with a main currency and premium or event tokens
