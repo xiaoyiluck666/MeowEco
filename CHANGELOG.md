@@ -2,6 +2,34 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## Maintenance - 2026-09-02
+
+### Added
+
+- Added no new runtime features.
+
+### Changed
+
+- Replaced unused audit-scope resource bindings with Java 25 unnamed variables to keep automatic scope closing without IDE unused-value warnings.
+
+### Fixed
+
+- Removed the unused `AbstractSQLDatabase#hasIndex(Connection, String)` overload.
+
+## Roadmap - 2026-09-06
+
+### Added
+
+- Added `docs/plan/ROADMAP.md` to make policy-first monetary stability the product direction, with staged observability, sink/faucet, simulation, and integration milestones.
+
+### Changed
+
+- Clarified that MeowEco's promise is measurable policy control rather than a guarantee of fixed prices or automatic protection from every source of inflation.
+
+### Fixed
+
+- None.
+
 ## v26.10.0 - 2026-09-01
 
 ### Added
