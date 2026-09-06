@@ -69,6 +69,12 @@ When a player reports a missing payment or an admin needs to investigate inflati
 
 Audit records include the operation, source, actor, currency, amount, before/after balances, timestamp, and transaction ID. Related sides of a payment or exchange share the same transaction ID.
 
+## Run A Measurable Money Policy
+
+Use `/meco policy report` as a read-only checkpoint before changing tax or sink settings. It shows each currency's total supply, circulating balance (excluding frozen funds), account count, and the share held by the richest account and Top 10 accounts, followed by the active rich-tax rules.
+
+This turns “fight inflation” into an operating loop: measure supply and concentration, adjust a policy lever, then compare the next report and audit entries. Rich tax removes or redirects the amount above each threshold; it does not rewrite prices or guarantee a fixed value by itself.
+
 ## A Practical Fit For
 
 - Survival servers with a main currency and premium or event tokens

@@ -308,10 +308,6 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         }
     }
 
-    private boolean hasIndex(Connection conn, String indexName) throws SQLException {
-        return hasIndex(conn, getTableName(), indexName);
-    }
-
     private boolean hasIndex(Connection conn, String tableName, String indexName) throws SQLException {
         String expected = indexName.toLowerCase(Locale.ROOT);
         try (ResultSet rs = conn.getMetaData().getIndexInfo(conn.getCatalog(), null, tableName, false, false)) {
@@ -858,6 +854,38 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             logSqlError("GetTotalBalance error", e);
         }
         return 0.0D;
+    }
+
+    @Override
+    public int getAccountCount(String currency) {
+        String sql = "SELECT COUNT(*) FROM " + getTableName()
+                + " WHERE currency = ? AND hidden = 0 AND username <> 'tax'";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, currency);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException e) {
+            logSqlError("GetAccountCount error", e);
+            return -1;
+        }
+    }
+
+    @Override
+    public double getAvailableTotalBalance(String currency) {
+        String sql = "SELECT SUM(balance - frozen_balance) FROM " + getTableName()
+                + " WHERE currency = ? AND hidden = 0 AND username <> 'tax'";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, currency);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getDouble(1) : 0.0D;
+            }
+        } catch (SQLException e) {
+            logSqlError("GetAvailableTotalBalance error", e);
+            return 0.0D;
+        }
     }
 
     @Override

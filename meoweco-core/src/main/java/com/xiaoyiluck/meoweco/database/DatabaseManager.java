@@ -57,6 +57,14 @@ public interface DatabaseManager {
     Map<UUID, Double> getAccountsAboveBalance(String currency, double minimumBalance);
     double getTotalBalance(String currency);
 
+    default int getAccountCount(String currency) {
+        return -1;
+    }
+
+    default double getAvailableTotalBalance(String currency) {
+        return getTotalBalance(currency);
+    }
+
     void setHidden(UUID uuid, boolean hidden);
 
     default boolean updateHidden(UUID uuid, String username, boolean hidden) {

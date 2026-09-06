@@ -28,6 +28,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
     private final EcoCommand ecoCommand;
     private final BaltopCommand baltopCommand;
     private final DataCommand dataCommand;
+    private final PolicyCommand policyCommand;
 
     public MeowEcoCommand(MeowEco plugin) {
         this.plugin = plugin;
@@ -37,6 +38,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
         this.ecoCommand = new EcoCommand(plugin);
         this.baltopCommand = new BaltopCommand(plugin);
         this.dataCommand = new DataCommand(plugin);
+        this.policyCommand = new PolicyCommand(plugin);
     }
 
     public MoneyCommand getMoneyCommand() {
@@ -108,6 +110,12 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 return dataCommand.handleMigration(sender, subArgs);
             case "audit":
                 return dataCommand.handleAudit(sender, subArgs);
+            case "policy":
+                if (subArgs.length == 1 && subArgs[0].equalsIgnoreCase("report")) {
+                    return policyCommand.handleReport(sender);
+                }
+                sender.sendMessage(Component.text("§cUsage: /meco policy report"));
+                return true;
             case "checkupdate":
                 if (!sender.hasPermission("meoweco.admin")) {
                     sender.sendMessage(plugin.getConfigManager().getComponent("no-permission"));
@@ -230,6 +238,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
             sender.sendMessage(Component.text("§c/meco precision report §7- Scan old over-precision balances"));
             sender.sendMessage(Component.text("§c/meco migrate ... §7- Preview or import balances from another economy"));
             sender.sendMessage(Component.text("§c/meco audit ... §7- View or export transaction history"));
+            sender.sendMessage(Component.text("§c/meco policy report §7- Show monetary policy metrics"));
         }
     }
 
@@ -241,7 +250,7 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 subs.add("exchange");
             }
             if (sender.hasPermission("meoweco.admin")) {
-                subs.addAll(List.of("give", "take", "set", "freeze", "unfreeze", "deductfrozen", "setrate", "reload", "debug", "refresh", "hide", "unhide", "checkupdate", "precision", "migrate", "audit"));
+                subs.addAll(List.of("give", "take", "set", "freeze", "unfreeze", "deductfrozen", "setrate", "reload", "debug", "refresh", "hide", "unhide", "checkupdate", "precision", "migrate", "audit", "policy"));
             }
             String prefix = args[0].toLowerCase();
             return subs.stream().filter(s -> s.startsWith(prefix)).toList();
@@ -289,6 +298,11 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 return dataCommand.tabCompleteMigration(subArgs);
             case "audit":
                 return dataCommand.tabCompleteAudit(subArgs);
+            case "policy":
+                if (subArgs.length == 1) {
+                    return List.of("report").stream().filter(s -> s.startsWith(subArgs[0].toLowerCase())).toList();
+                }
+                return Collections.emptyList();
             case "exchange":
                 String[] exchangeArgs = new String[args.length];
                 exchangeArgs[0] = "exchange";
