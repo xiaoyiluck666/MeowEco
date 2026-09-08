@@ -2,6 +2,20 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## v26.10.2 - 2026-09-07
+
+### Added
+
+- Added regression coverage for canonical currency IDs, frozen balances, and rich-tax account filtering.
+
+### Changed
+
+- Payment account initialization now closes the join-time race for online participants.
+
+### Fixed
+
+- Fixed mixed-case API currency operations, balance resets below frozen funds, hidden/tax account taxation, self-tax transfers, and negative available balances.
+
 ## v26.10.1 - 2026-09-06
 
 ### Added

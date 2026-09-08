@@ -26,7 +26,7 @@ public class PlayerListener implements Listener {
         final String name = player.getName();
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            try (var ignored = plugin.getDatabaseManager().openAuditScope("player_join", name)) {
+            try (var _ = plugin.getDatabaseManager().openAuditScope("player_join", name)) {
                 for (com.xiaoyiluck.meoweco.objects.Currency currency : plugin.getCurrencies().values()) {
                     if (!plugin.getDatabaseManager().hasAccount(uuid, currency.getId())) {
                         plugin.getDatabaseManager().createAccount(uuid, currency.getId(), currency.getInitialBalance());

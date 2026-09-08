@@ -168,7 +168,7 @@ public class JdbcDatabaseManager implements DatabaseManager {
         if (!isNonNegativeFinite(amount)) {
             return false;
         }
-        return executeAccountUpdate("UPDATE " + TABLE_NAME + " SET balance = ? WHERE uuid = ? AND currency = ?", amount, uuid, currency);
+        return executeAccountUpdate("UPDATE " + TABLE_NAME + " SET balance = ? WHERE uuid = ? AND currency = ? AND frozen_balance <= ?", amount, uuid, currency, amount);
     }
 
     @Override
@@ -190,7 +190,7 @@ public class JdbcDatabaseManager implements DatabaseManager {
             return false;
         }
         return executeAccountUpdate(
-                "UPDATE " + TABLE_NAME + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance >= ?",
+                "UPDATE " + TABLE_NAME + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?",
                 amount,
                 uuid,
                 currency,
@@ -209,7 +209,7 @@ public class JdbcDatabaseManager implements DatabaseManager {
             return false;
         }
 
-        String withdrawSql = "UPDATE " + TABLE_NAME + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance >= ?";
+        String withdrawSql = "UPDATE " + TABLE_NAME + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
         String depositSql = "UPDATE " + TABLE_NAME + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
 
         try (Connection connection = getConnection()) {
@@ -253,7 +253,7 @@ public class JdbcDatabaseManager implements DatabaseManager {
             return false;
         }
 
-        String withdrawSql = "UPDATE " + TABLE_NAME + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance >= ?";
+        String withdrawSql = "UPDATE " + TABLE_NAME + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
         String depositSql = "UPDATE " + TABLE_NAME + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
 
         try (Connection connection = getConnection()) {
@@ -386,7 +386,7 @@ public class JdbcDatabaseManager implements DatabaseManager {
 
     @Override
     public Map<String, Double> getTopAccounts(String currency, int limit) {
-        String sql = "SELECT username, uuid, balance FROM " + TABLE_NAME + " WHERE currency = ? AND hidden = 0 ORDER BY balance DESC LIMIT ?";
+        String sql = "SELECT username, uuid, balance FROM " + TABLE_NAME + " WHERE currency = ? AND hidden = 0 AND LOWER(username) <> 'tax' ORDER BY balance DESC LIMIT ?";
         Map<String, Double> topAccounts = new LinkedHashMap<>();
         try (Connection connection = getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, currency.toLowerCase());
@@ -406,7 +406,7 @@ public class JdbcDatabaseManager implements DatabaseManager {
 
     @Override
     public Map<UUID, Double> getAccountsAboveBalance(String currency, double minimumBalance) {
-        String sql = "SELECT uuid, balance FROM " + TABLE_NAME + " WHERE currency = ? AND hidden = 0 AND balance >= ?";
+        String sql = "SELECT uuid, balance FROM " + TABLE_NAME + " WHERE currency = ? AND hidden = 0 AND LOWER(username) <> 'tax' AND balance >= ?";
         Map<UUID, Double> result = new LinkedHashMap<>();
         try (Connection connection = getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, currency.toLowerCase());

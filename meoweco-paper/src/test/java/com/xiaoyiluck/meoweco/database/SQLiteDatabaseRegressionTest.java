@@ -138,7 +138,7 @@ public final class SQLiteDatabaseRegressionTest {
         database.setOfflineName(player, "Audited");
         database.createAccount(player, "audit", 10.0D);
 
-        try (AuditScope ignored = database.openAuditScope("command.eco", "Console")) {
+        try (AuditScope _ = database.openAuditScope("command.eco", "Console")) {
             assertTrue(database.deposit(player, "audit", 5.0D));
             assertFalse(database.withdraw(player, "audit", 100.0D));
         }

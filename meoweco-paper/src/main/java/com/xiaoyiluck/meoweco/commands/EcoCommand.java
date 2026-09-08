@@ -255,7 +255,7 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             String msgKey;
             boolean success;
-            try (var ignored = plugin.getDatabaseManager().openAuditScope("command." + sub, actorName)) {
+            try (var _ = plugin.getDatabaseManager().openAuditScope("command." + sub, actorName)) {
                 if (!plugin.getDatabaseManager().hasAccount(finalTarget.getUniqueId(), finalCurrency.getId())) {
                     plugin.getDatabaseManager().createAccount(finalTarget.getUniqueId(), finalCurrency.getId(), 0);
                 }

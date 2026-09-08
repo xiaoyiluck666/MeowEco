@@ -39,6 +39,9 @@ public final class RichTaxEngine {
             int taxedAccountsForCurrency = 0;
 
             for (Map.Entry<UUID, Double> entry : taxableAccounts.entrySet()) {
+                if (collectorUuid != null && collectorUuid.equals(entry.getKey())) {
+                    continue;
+                }
                 double taxableAmount = entry.getValue() - rule.threshold();
                 if (taxableAmount <= 0.0D) {
                     continue;

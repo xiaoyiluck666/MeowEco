@@ -2,7 +2,7 @@ import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.compile.JavaCompile
 
 group = "com.xiaoyiluck"
-version = "26.10.1"
+version = "26.10.2"
 
 subprojects {
     apply(plugin = "java")

@@ -250,7 +250,7 @@ public class MeowEconomy implements Economy {
         MeowEco plugin = getPlugin();
         Currency def = resolveDefaultCurrency(plugin);
         boolean success;
-        try (var ignored = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
+        try (var _ = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
             success = plugin.getDatabaseManager().createAccount(player.getUniqueId(), def.getId(), def.getInitialBalance());
         }
         invalidateDefaultCurrencyBalance(player.getUniqueId(), def.getId());
@@ -287,7 +287,7 @@ public class MeowEconomy implements Economy {
 
         String currencyId = resolveDefaultCurrencyId(plugin);
         boolean success;
-        try (var ignored = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
+        try (var _ = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
             success = plugin.getDatabaseManager().withdraw(player.getUniqueId(), currencyId, normalizedAmount);
         }
         invalidateDefaultCurrencyBalance(player.getUniqueId(), currencyId);
@@ -330,7 +330,7 @@ public class MeowEconomy implements Economy {
 
         String currencyId = resolveDefaultCurrencyId(plugin);
         boolean success;
-        try (var ignored = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
+        try (var _ = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
             success = plugin.getDatabaseManager().deposit(player.getUniqueId(), currencyId, normalizedAmount);
         }
         invalidateDefaultCurrencyBalance(player.getUniqueId(), currencyId);

@@ -44,7 +44,9 @@ final class InMemoryDatabaseManager implements DatabaseManager {
 
     @Override
     public boolean updateBalance(UUID uuid, String currency, double amount) {
-        account(uuid, currency).balance = amount;
+        Account account = account(uuid, currency);
+        if (!Double.isFinite(amount) || amount < account.frozen) return false;
+        account.balance = amount;
         return true;
     }
 
@@ -191,6 +193,7 @@ final class InMemoryDatabaseManager implements DatabaseManager {
         accounts.entrySet().stream()
                 .filter(entry -> entry.getKey().currency.equals(currency))
                 .filter(entry -> !isHidden(entry.getKey().uuid))
+                .filter(entry -> !"tax".equalsIgnoreCase(names.get(entry.getKey().uuid)))
                 .sorted(Map.Entry.<Key, Account>comparingByValue(Comparator.comparingDouble(account -> account.balance)).reversed())
                 .limit(limit)
                 .forEach(entry -> result.put(names.getOrDefault(entry.getKey().uuid, entry.getKey().uuid.toString()), entry.getValue().balance));
@@ -203,7 +206,8 @@ final class InMemoryDatabaseManager implements DatabaseManager {
         accounts.entrySet().stream()
                 .filter(entry -> entry.getKey().currency.equals(currency))
                 .filter(entry -> !isHidden(entry.getKey().uuid))
-                .filter(entry -> entry.getValue().balance > minimumBalance)
+                .filter(entry -> !"tax".equalsIgnoreCase(names.get(entry.getKey().uuid)))
+                .filter(entry -> entry.getValue().balance - entry.getValue().frozen > minimumBalance)
                 .forEach(entry -> result.put(entry.getKey().uuid, entry.getValue().balance));
         return result;
     }

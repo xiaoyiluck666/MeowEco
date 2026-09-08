@@ -194,7 +194,7 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             EconomyService.ExchangeResult exchangeResult;
-            try (var ignored = plugin.getDatabaseManager().openAuditScope("command.exchange", player.getName())) {
+            try (var _ = plugin.getDatabaseManager().openAuditScope("command.exchange", player.getName())) {
                 economyService.ensureAccount(player.getUniqueId(), from);
                 economyService.ensureAccount(player.getUniqueId(), to);
                 exchangeResult = economyService.exchange(player.getUniqueId(), from, to, amount, rate);

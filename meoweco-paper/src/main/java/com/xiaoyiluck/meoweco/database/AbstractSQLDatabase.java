@@ -512,8 +512,8 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         if (!isNonNegativeFinite(amount)) {
             return false;
         }
-        String sql = "UPDATE " + getTableName() + " SET balance = ? WHERE uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "UpdateBalance error", uuid, currency, "SET_BALANCE", null, amount);
+        String sql = "UPDATE " + getTableName() + " SET balance = ? WHERE uuid = ? AND currency = ? AND frozen_balance <= ?";
+        return executeAccountUpdate(sql, "UpdateBalance error", uuid, currency, "SET_BALANCE", null, amount, amount);
     }
 
     @Override
@@ -795,7 +795,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 + " (excluding hidden and 'tax' accounts)");
         Map<String, Double> top = new LinkedHashMap<>();
         String sql = "SELECT username, balance FROM " + getTableName()
-                + " WHERE currency = ? AND hidden = 0 AND username <> 'tax' ORDER BY balance DESC LIMIT ?";
+                + " WHERE currency = ? AND hidden = 0 AND LOWER(username) <> 'tax' ORDER BY balance DESC LIMIT ?";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, currency);
@@ -818,7 +818,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     public Map<UUID, Double> getAccountsAboveBalance(String currency, double minimumBalance) {
         Map<UUID, Double> accounts = new LinkedHashMap<>();
         String sql = "SELECT uuid, (balance - frozen_balance) AS available_balance FROM " + getTableName()
-                + " WHERE currency = ? AND username <> 'tax' AND (balance - frozen_balance) > ?"
+                + " WHERE currency = ? AND hidden = 0 AND LOWER(username) <> 'tax' AND (balance - frozen_balance) > ?"
                 + " ORDER BY available_balance DESC";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -859,7 +859,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     @Override
     public int getAccountCount(String currency) {
         String sql = "SELECT COUNT(*) FROM " + getTableName()
-                + " WHERE currency = ? AND hidden = 0 AND username <> 'tax'";
+                + " WHERE currency = ? AND hidden = 0 AND LOWER(username) <> 'tax'";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, currency);
@@ -875,7 +875,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     @Override
     public double getAvailableTotalBalance(String currency) {
         String sql = "SELECT SUM(balance - frozen_balance) FROM " + getTableName()
-                + " WHERE currency = ? AND hidden = 0 AND username <> 'tax'";
+                + " WHERE currency = ? AND hidden = 0 AND LOWER(username) <> 'tax'";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, currency);

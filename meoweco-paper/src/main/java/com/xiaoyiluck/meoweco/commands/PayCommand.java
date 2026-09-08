@@ -95,13 +95,18 @@ public class PayCommand implements CommandExecutor, TabCompleter {
         Component successReceiverTemplate = plugin.getConfigManager().getComponent("pay-success-receiver");
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            economyService.ensureAccount(player.getUniqueId(), finalCurrency);
             if (!plugin.getDatabaseManager().hasAccount(target.getUniqueId(), finalCurrency.getId())) {
+                if (target.isOnline()) {
+                    economyService.ensureAccount(target.getUniqueId(), finalCurrency);
+                } else {
                 plugin.getServer().getScheduler().runTask(plugin, () -> sender.sendMessage(playerNotFound));
                 return;
+                }
             }
 
             EconomyService.PayResult payResult;
-            try (var ignored = plugin.getDatabaseManager().openAuditScope("command.pay", playerName)) {
+            try (var _ = plugin.getDatabaseManager().openAuditScope("command.pay", playerName)) {
                 payResult = economyService.pay(player.getUniqueId(), target.getUniqueId(), finalCurrency, finalAmount);
             }
             double tax = payResult.tax();
