@@ -13,7 +13,6 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-@SuppressWarnings("deprecation")
 public class MeowEconomy implements Economy {
     private static final long VAULT_BALANCE_CACHE_TTL_MS = 500L;
     private final ConcurrentHashMap<String, VaultBalanceSnapshot> defaultCurrencyBalanceCache = new ConcurrentHashMap<>();

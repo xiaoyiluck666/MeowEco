@@ -18,6 +18,7 @@ This file now serves as the running changelog for MeowEco.
 
 - Added regression coverage for marginal tier calculations.
 - Cleared compatibility-build deprecation diagnostics for the intentionally implemented legacy Vault methods.
+- Removed the redundant deprecation suppression from the Vault economy adapter so the IDE no longer reports it as unnecessary.
 
 ## Distribution - 2026-09-21
 
