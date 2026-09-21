@@ -17,6 +17,7 @@ This file now serves as the running changelog for MeowEco.
 ### Fixed
 
 - Added regression coverage for marginal tier calculations.
+- Cleared compatibility-build deprecation diagnostics for the intentionally implemented legacy Vault methods.
 
 ## Distribution - 2026-09-21
 

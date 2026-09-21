@@ -87,6 +87,8 @@ val compilePaper261CompatJava by tasks.registering(JavaCompile::class) {
 
     options.encoding = "UTF-8"
     options.release.set(25)
+    // Vault's compatibility interface still exposes legacy methods by design.
+    options.compilerArgs.add("-nowarn")
     javaCompiler.set(javaToolchains.compilerFor {
         languageVersion.set(JavaLanguageVersion.of(25))
     })
@@ -109,6 +111,8 @@ val compilePaper2612CompatJava by tasks.registering(JavaCompile::class) {
 
     options.encoding = "UTF-8"
     options.release.set(25)
+    // Vault's compatibility interface still exposes legacy methods by design.
+    options.compilerArgs.add("-nowarn")
     javaCompiler.set(javaToolchains.compilerFor {
         languageVersion.set(JavaLanguageVersion.of(25))
     })
