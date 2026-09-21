@@ -2,7 +2,7 @@
 
 This file now serves as the running changelog for MeowEco.
 
-## Progressive Taxes - 2026-09-21
+## v26.10.4 - 2026-09-21
 
 ### Added
 
@@ -13,6 +13,7 @@ This file now serves as the running changelog for MeowEco.
 - Preserved the legacy single-threshold tax configuration while allowing multiple threshold/rate tiers.
 - Updated the Chinese and English Wiki with progressive-tax examples and calculation guidance.
 - Updated the project overview to highlight progressive rich-tax and transfer-tax tiers.
+- Updated the project entry buttons and download guidance so compiled JAR files are distributed through Modrinth while GitHub remains the source and documentation hub.
 
 ### Fixed
 
