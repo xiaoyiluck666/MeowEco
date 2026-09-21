@@ -1,7 +1,5 @@
 # MeowEco Economy
 
-[![Modrinth](https://img.shields.io/modrinth/dt/meoweco?logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/meoweco)
-
 [![Modrinth 下载](https://img.shields.io/badge/Modrinth_⬇️-下载-E53935?style=flat&logo=modrinth&logoColor=white)](https://modrinth.com/plugin/meoweco/versions)&nbsp;&nbsp;[![GitHub Wiki 文档](https://img.shields.io/badge/GitHub_📚-Wiki_文档-E53935?style=flat&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco/wiki)&nbsp;&nbsp;[![GitHub 源码](https://img.shields.io/badge/GitHub_💻-源码-E53935?style=flat&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco)
 
 **🧊 Measure inflation. Tune policy. Keep every balance change explainable.**
