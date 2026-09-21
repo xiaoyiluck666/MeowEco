@@ -15,6 +15,7 @@ import com.xiaoyiluck.meoweco.utils.ConfigManager;
 import com.xiaoyiluck.meoweco.utils.UpdateChecker;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.TaxPolicy;
+import com.xiaoyiluck.meoweco.service.EconomyService;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.ServicePriority;
@@ -30,6 +31,8 @@ import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 import java.util.Collections;
 
@@ -38,8 +41,10 @@ public class MeowEco extends JavaPlugin {
 
     private static MeowEco instance;
     private DatabaseManager databaseManager;
+    private EconomyService economyService;
     private ConfigManager configManager;
     private MeowEconomy meowEconomy;
+    private Object vaultUnlockedEconomy;
     private BaltopCommand baltopCommand;
     private MeowEcoPlaceholders placeholders;
     private UpdateChecker updateChecker;
@@ -72,6 +77,7 @@ public class MeowEco extends JavaPlugin {
             databaseManager = new SQLiteDatabase(this);
         }
         databaseManager.init();
+        economyService = new EconomyService(databaseManager);
         runPrecisionReportOnStartup();
         initializeMetrics();
 
@@ -82,7 +88,8 @@ public class MeowEco extends JavaPlugin {
         if (getServer().getPluginManager().getPlugin("Vault") != null) {
             meowEconomy = new MeowEconomy(this);
             getServer().getServicesManager().register(Economy.class, meowEconomy, this, ServicePriority.Highest);
-            getLogger().info("Registered with Vault.");
+            getLogger().info("Registered Classic Vault economy provider.");
+            registerVaultUnlockedProvider();
         } else {
             getLogger().warning("Vault not found! Economy features might not work with other plugins.");
         }
@@ -203,6 +210,7 @@ public class MeowEco extends JavaPlugin {
     public void onDisable() {
         // Cancel all async tasks to prevent database usage during shutdown
         getServer().getScheduler().cancelTasks(this);
+        getServer().getServicesManager().unregisterAll(this);
 
         // Unregister PlaceholderAPI expansion
         if (placeholders != null) {
@@ -464,6 +472,10 @@ public class MeowEco extends JavaPlugin {
         return databaseManager;
     }
 
+    public EconomyService getEconomyService() {
+        return economyService;
+    }
+
     public ConfigManager getConfigManager() {
         return configManager;
     }
@@ -478,6 +490,42 @@ public class MeowEco extends JavaPlugin {
 
     public MeowEconomy getVaultEconomy() {
         return meowEconomy;
+    }
+
+    public Object getVaultUnlockedEconomy() {
+        return vaultUnlockedEconomy;
+    }
+
+    private void registerVaultUnlockedProvider() {
+        try {
+            Class<?> serviceType = Class.forName("net.milkbowl.vault2.economy.Economy", false, getClassLoader());
+            Executor executor = command -> {
+                if (!isEnabled()) {
+                    throw new RejectedExecutionException("MeowEco is disabled");
+                }
+                getServer().getScheduler().runTaskAsynchronously(this, command);
+            };
+            Class<?> providerType = Class.forName("com.xiaoyiluck.meoweco.api.MeowEconomyV2", true, getClassLoader());
+            vaultUnlockedEconomy = providerType.getConstructor(MeowEco.class, Executor.class)
+                    .newInstance(this, executor);
+            registerVaultUnlockedService(serviceType, vaultUnlockedEconomy);
+            getLogger().info("Registered VaultUnlocked v2 economy provider with async support.");
+        } catch (ClassNotFoundException ignored) {
+            getLogger().info("VaultUnlocked v2 API not found; Classic Vault provider remains available.");
+        } catch (ReflectiveOperationException | LinkageError error) {
+            vaultUnlockedEconomy = null;
+            getLogger().log(java.util.logging.Level.WARNING,
+                    "VaultUnlocked v2 API is present but incompatible; Classic Vault provider remains available.", error);
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private void registerVaultUnlockedService(Class<?> serviceType, Object provider) {
+        getServer().getServicesManager().register(
+                (Class) serviceType,
+                provider,
+                this,
+                ServicePriority.Highest);
     }
 
     public void invalidateVaultEconomyCache(UUID uuid, String currencyId) {

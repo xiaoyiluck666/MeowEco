@@ -94,14 +94,6 @@ public class MeowEconomy implements Economy {
         return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Player not found");
     }
 
-    private double normalizeDefaultCurrencyAmount(MeowEco plugin, double amount) {
-        Currency currency = resolveDefaultCurrency(plugin);
-        if (!MoneyAmountPolicy.isValidPositiveInput(amount, currency)) {
-            return Double.NaN;
-        }
-        return MoneyAmountPolicy.roundForStorage(amount, currency);
-    }
-
     public void invalidateCache(UUID uuid, String currencyId) {
         invalidateDefaultCurrencyBalance(uuid, currencyId);
     }
@@ -173,6 +165,8 @@ public class MeowEconomy implements Economy {
     public boolean has(OfflinePlayer player, double amount) {
         if (!isEnabled()) return false;
         MeowEco plugin = getPlugin();
+        Currency currency = resolveDefaultCurrency(plugin);
+        if (!MoneyAmountPolicy.isValidNonNegativeInput(amount, currency)) return false;
         String currencyId = resolveDefaultCurrencyId(plugin);
         VaultBalanceSnapshot snapshot = getDefaultCurrencyBalanceSnapshot(plugin, player.getUniqueId(), currencyId);
         return snapshot.available() >= amount;
@@ -280,24 +274,7 @@ public class MeowEconomy implements Economy {
             return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Plugin is disabled");
         }
         MeowEco plugin = getPlugin();
-        double normalizedAmount = normalizeDefaultCurrencyAmount(plugin, amount);
-        if (!Double.isFinite(normalizedAmount)) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Amount must be greater than 0 and fit currency precision");
-        }
-
-        String currencyId = resolveDefaultCurrencyId(plugin);
-        boolean success;
-        try (var _ = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
-            success = plugin.getDatabaseManager().withdraw(player.getUniqueId(), currencyId, normalizedAmount);
-        }
-        invalidateDefaultCurrencyBalance(player.getUniqueId(), currencyId);
-        double balance = getBalance(player);
-        
-        if (success) {
-            return new EconomyResponse(normalizedAmount, balance, EconomyResponse.ResponseType.SUCCESS, null);
-        } else {
-            return new EconomyResponse(0, balance, EconomyResponse.ResponseType.FAILURE, "Insufficient funds");
-        }
+        return operations(plugin).withdraw(player.getUniqueId(), amount);
     }
 
     @Override
@@ -323,22 +300,7 @@ public class MeowEconomy implements Economy {
             return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Plugin is disabled");
         }
         MeowEco plugin = getPlugin();
-        double normalizedAmount = normalizeDefaultCurrencyAmount(plugin, amount);
-        if (!Double.isFinite(normalizedAmount)) {
-            return new EconomyResponse(0, 0, EconomyResponse.ResponseType.FAILURE, "Amount must be greater than 0 and fit currency precision");
-        }
-
-        String currencyId = resolveDefaultCurrencyId(plugin);
-        boolean success;
-        try (var _ = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
-            success = plugin.getDatabaseManager().deposit(player.getUniqueId(), currencyId, normalizedAmount);
-        }
-        invalidateDefaultCurrencyBalance(player.getUniqueId(), currencyId);
-        double balance = getBalance(player);
-        if (success) {
-            return new EconomyResponse(normalizedAmount, balance, EconomyResponse.ResponseType.SUCCESS, null);
-        }
-        return new EconomyResponse(0, balance, EconomyResponse.ResponseType.FAILURE, "Account not found or database error");
+        return operations(plugin).deposit(player.getUniqueId(), amount);
     }
 
     @Override
@@ -410,6 +372,11 @@ public class MeowEconomy implements Economy {
     @Override
     public List<String> getBanks() {
         return Collections.emptyList();
+    }
+
+    private VaultEconomyOperations operations(MeowEco plugin) {
+        return new VaultEconomyOperations(plugin.getDatabaseManager(), plugin.getEconomyService(),
+                resolveDefaultCurrency(plugin), this::invalidateDefaultCurrencyBalance);
     }
 
     private record VaultBalanceSnapshot(double balance, double frozen, long timestampMs) {

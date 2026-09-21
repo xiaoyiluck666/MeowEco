@@ -4,6 +4,7 @@ import com.xiaoyiluck.meoweco.objects.Currency;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.OptionalDouble;
 
 public final class MoneyAmountPolicy {
     /** Largest balance for which every whole-unit increment remains exact in a double. */
@@ -50,5 +51,24 @@ public final class MoneyAmountPolicy {
             return 2;
         }
         return Math.max(0, currency.getDecimalPlaces());
+    }
+
+    public static OptionalDouble toExactDouble(BigDecimal amount, Currency currency) {
+        if (amount == null) {
+            return OptionalDouble.empty();
+        }
+        int scale = decimalPlaces(currency);
+        final BigDecimal normalized;
+        try {
+            normalized = amount.setScale(scale, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException ignored) {
+            return OptionalDouble.empty();
+        }
+        double converted = normalized.doubleValue();
+        if (!Double.isFinite(converted) || Math.abs(converted) > MAX_SAFE_BALANCE) {
+            return OptionalDouble.empty();
+        }
+        BigDecimal roundTrip = BigDecimal.valueOf(converted).setScale(scale, RoundingMode.HALF_UP);
+        return roundTrip.compareTo(normalized) == 0 ? OptionalDouble.of(converted) : OptionalDouble.empty();
     }
 }

@@ -806,6 +806,25 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     @Override
+    public Map<UUID, String> getAccountNames() {
+        Map<UUID, String> accounts = new LinkedHashMap<>();
+        String sql = "SELECT uuid, MAX(username) AS username FROM " + getTableName() + " GROUP BY uuid";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                try {
+                    accounts.put(UUID.fromString(rs.getString(COLUMN_UUID)), cleanUsername(rs.getString(COLUMN_USERNAME)));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        } catch (SQLException e) {
+            logSqlError("GetAccountNames error", e);
+        }
+        return accounts;
+    }
+
+    @Override
     public Map<String, Double> getTopAccounts(String currency, int limit) {
         debug("Database Query: getTopAccounts for currency '" + currency + "' limit " + limit
                 + " (excluding hidden and 'tax' accounts)");
