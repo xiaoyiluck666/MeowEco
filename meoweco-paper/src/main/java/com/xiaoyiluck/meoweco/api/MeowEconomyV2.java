@@ -3,6 +3,7 @@ package com.xiaoyiluck.meoweco.api;
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.database.AuditScope;
 import com.xiaoyiluck.meoweco.database.DatabaseManager;
+import com.xiaoyiluck.meoweco.lifecycle.VaultAsyncOperationManager;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.EconomyService;
 import com.xiaoyiluck.meoweco.service.MoneyAmountPolicy;
@@ -42,13 +43,17 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
     private final Context context;
     private final AsyncEconomy asyncEconomy;
 
-    public MeowEconomyV2(MeowEco plugin, Executor executor) {
-        this(new PluginContext(plugin), executor);
+    public MeowEconomyV2(MeowEco plugin, VaultAsyncOperationManager asyncOperations) {
+        this(new PluginContext(plugin), asyncOperations);
     }
 
     MeowEconomyV2(Context context, Executor executor) {
+        this(context, new VaultAsyncOperationManager(executor));
+    }
+
+    MeowEconomyV2(Context context, VaultAsyncOperationManager asyncOperations) {
         this.context = context;
-        this.asyncEconomy = new AsyncAdapter(executor);
+        this.asyncEconomy = new AsyncAdapter(asyncOperations);
     }
 
     @Override
@@ -534,14 +539,14 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
     }
 
     private final class AsyncAdapter implements AsyncEconomy {
-        private final Executor executor;
+        private final VaultAsyncOperationManager asyncOperations;
 
-        private AsyncAdapter(Executor executor) {
-            this.executor = executor;
+        private AsyncAdapter(VaultAsyncOperationManager asyncOperations) {
+            this.asyncOperations = asyncOperations;
         }
 
         private <T> CompletableFuture<T> submit(Supplier<T> supplier) {
-            return CompletableFuture.supplyAsync(supplier, executor);
+            return asyncOperations.submit(supplier);
         }
 
         @Override public CompletableFuture<Boolean> createAccount(UUID id, String name, boolean player) { return submit(() -> MeowEconomyV2.this.createAccount(id, name, player)); }

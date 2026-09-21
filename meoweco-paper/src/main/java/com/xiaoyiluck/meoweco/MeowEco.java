@@ -9,6 +9,7 @@ import com.xiaoyiluck.meoweco.database.DatabaseManager;
 import com.xiaoyiluck.meoweco.database.MySQLDatabase;
 import com.xiaoyiluck.meoweco.database.SQLiteDatabase;
 import com.xiaoyiluck.meoweco.hooks.MeowEcoPlaceholders;
+import com.xiaoyiluck.meoweco.lifecycle.VaultAsyncOperationManager;
 import com.xiaoyiluck.meoweco.listeners.PlayerListener;
 import com.xiaoyiluck.meoweco.tax.RichTaxService;
 import com.xiaoyiluck.meoweco.utils.ConfigManager;
@@ -24,6 +25,7 @@ import org.bstats.bukkit.Metrics;
 import org.bstats.charts.SimplePie;
 
 import java.lang.reflect.Method;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -38,6 +40,7 @@ import java.util.Collections;
 
 public class MeowEco extends JavaPlugin {
     private static final String FALLBACK_CURRENCY_ID = "coins";
+    private static final Duration VAULT_ASYNC_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
 
     private static MeowEco instance;
     private DatabaseManager databaseManager;
@@ -45,6 +48,7 @@ public class MeowEco extends JavaPlugin {
     private ConfigManager configManager;
     private MeowEconomy meowEconomy;
     private Object vaultUnlockedEconomy;
+    private VaultAsyncOperationManager vaultAsyncOperationManager;
     private BaltopCommand baltopCommand;
     private MeowEcoPlaceholders placeholders;
     private UpdateChecker updateChecker;
@@ -208,7 +212,7 @@ public class MeowEco extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Cancel all async tasks to prevent database usage during shutdown
+        VaultAsyncOperationManager.ShutdownResult vaultAsyncShutdown = stopVaultAsyncOperations();
         getServer().getScheduler().cancelTasks(this);
         getServer().getServicesManager().unregisterAll(this);
 
@@ -223,7 +227,11 @@ public class MeowEco extends JavaPlugin {
             richTaxService = null;
         }
 
-        if (databaseManager != null) {
+        if (databaseManager != null && vaultAsyncShutdown != null && !vaultAsyncShutdown.termination().isDone()) {
+            getLogger().warning("Vault v2 async shutdown timed out; database close is deferred until running work finishes.");
+            DatabaseManager databaseToClose = databaseManager;
+            vaultAsyncShutdown.termination().thenRun(databaseToClose::close);
+        } else if (databaseManager != null) {
             databaseManager.close();
         }
         if (metrics != null) {
@@ -496,6 +504,16 @@ public class MeowEco extends JavaPlugin {
         return vaultUnlockedEconomy;
     }
 
+    private VaultAsyncOperationManager.ShutdownResult stopVaultAsyncOperations() {
+        if (vaultAsyncOperationManager == null) {
+            return null;
+        }
+        VaultAsyncOperationManager.ShutdownResult result =
+                vaultAsyncOperationManager.shutdown(VAULT_ASYNC_SHUTDOWN_TIMEOUT);
+        vaultAsyncOperationManager = null;
+        return result;
+    }
+
     private void registerVaultUnlockedProvider() {
         try {
             Class<?> serviceType = Class.forName("net.milkbowl.vault2.economy.Economy", false, getClassLoader());
@@ -505,15 +523,18 @@ public class MeowEco extends JavaPlugin {
                 }
                 getServer().getScheduler().runTaskAsynchronously(this, command);
             };
+            vaultAsyncOperationManager = new VaultAsyncOperationManager(executor);
             Class<?> providerType = Class.forName("com.xiaoyiluck.meoweco.api.MeowEconomyV2", true, getClassLoader());
-            vaultUnlockedEconomy = providerType.getConstructor(MeowEco.class, Executor.class)
-                    .newInstance(this, executor);
+            vaultUnlockedEconomy = providerType.getConstructor(MeowEco.class, VaultAsyncOperationManager.class)
+                    .newInstance(this, vaultAsyncOperationManager);
             registerVaultUnlockedService(serviceType, vaultUnlockedEconomy);
             getLogger().info("Registered VaultUnlocked v2 economy provider with async support.");
         } catch (ClassNotFoundException ignored) {
+            vaultAsyncOperationManager = null;
             getLogger().info("VaultUnlocked v2 API not found; Classic Vault provider remains available.");
         } catch (ReflectiveOperationException | LinkageError error) {
             vaultUnlockedEconomy = null;
+            vaultAsyncOperationManager = null;
             getLogger().log(java.util.logging.Level.WARNING,
                     "VaultUnlocked v2 API is present but incompatible; Classic Vault provider remains available.", error);
         }

@@ -4,6 +4,7 @@ import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.database.AbstractSQLDatabase;
 import com.xiaoyiluck.meoweco.database.AuditEntry;
 import com.xiaoyiluck.meoweco.database.DatabaseManager;
+import com.xiaoyiluck.meoweco.lifecycle.VaultAsyncOperationManager;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.EconomyService;
 import com.xiaoyiluck.meoweco.service.MoneyAmountPolicy;
@@ -20,15 +21,21 @@ import org.bukkit.plugin.SimpleServicesManager;
 
 import java.math.BigDecimal;
 import java.lang.reflect.Proxy;
+import java.time.Duration;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.List;
+import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -62,8 +69,14 @@ public final class VaultUnlockedV2RegressionTest {
             crossApiOperationsShareOneBalance(database, modern, classic, context);
             lossyAmountsAndBoundaryTransfersRollBack(database, modern);
             progressiveTaxTransfersUseCurrentPolicy(database, modern, classic);
+            nativeAsyncTransferUsesCurrentPolicy(database, modern, context);
             asyncOperationsLeaveCallerThread(modern, context);
             parallelClassicAndModernOperationsRemainConsistent(database, modern, classic, executor);
+            queuedFutureCompletesDuringShutdown();
+            runningOperationDelaysSafeClose();
+            shutdownTimeoutCompletesFutureBeforeDeferredClose();
+            submissionAfterShutdownIsRejected();
+            schedulingFailureCompletesFuture();
         } finally {
             database.close();
             executor.shutdownNow();
@@ -205,6 +218,31 @@ public final class VaultUnlockedV2RegressionTest {
         assertDouble(130.0D, incoming.amount());
     }
 
+    private static void nativeAsyncTransferUsesCurrentPolicy(TestSQLiteDatabase database,
+                                                               MeowEconomyV2 modern,
+                                                               TestContext context) throws Exception {
+        UUID sender = UUID.randomUUID();
+        UUID receiver = UUID.randomUUID();
+        assertTrue(modern.createAccount(sender, "AsyncTaxSender", true));
+        assertTrue(modern.createAccount(receiver, "AsyncTaxReceiver", true));
+        assertTrue(modern.deposit("test", sender, "world", "taxed", new BigDecimal("200.00")).transactionSuccess());
+        String caller = Thread.currentThread().getName();
+        context.lastServiceThread.set(null);
+
+        CompletableFuture<MultiEconomyResponse> future = modern.async().orElseThrow()
+                .transfer("test", sender, receiver, "world", "taxed", new BigDecimal("150.00"));
+        MultiEconomyResponse transfer = future.get(10, TimeUnit.SECONDS);
+
+        assertTrue(future.isDone());
+        assertEquals(net.milkbowl.vault2.economy.EconomyResponse.ResponseType.SUCCESS, transfer.type());
+        assertTrue(context.lastServiceThread.get() != null && !context.lastServiceThread.get().equals(caller));
+        assertBigDecimal("50.00", modern.balance("test", sender, "world", "taxed"));
+        assertBigDecimal("130.00", modern.balance("test", receiver, "world", "taxed"));
+        AuditEntry asyncIncoming = database.getAuditHistory(receiver, "taxed", 1).get(0);
+        assertEquals("TRANSFER_IN", asyncIncoming.operation());
+        assertDouble(130.0D, asyncIncoming.amount());
+    }
+
     private static void asyncOperationsLeaveCallerThread(MeowEconomyV2 modern, TestContext context) throws Exception {
         UUID player = UUID.randomUUID();
         assertTrue(modern.createAccount(player, "Async", true));
@@ -240,6 +278,139 @@ public final class VaultUnlockedV2RegressionTest {
         assertTrue(modernDeposit.get().transactionSuccess());
         assertDouble(1090.0D, database.getBalance(player, "coins"));
         assertDouble(0.0D, database.getFrozenBalance(player, "coins"));
+    }
+
+    private static void queuedFutureCompletesDuringShutdown() {
+        QueuedExecutor executor = new QueuedExecutor();
+        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(executor);
+        AtomicBoolean mutated = new AtomicBoolean();
+        CompletableFuture<Boolean> future = manager.submit(() -> {
+            mutated.set(true);
+            return true;
+        });
+
+        VaultAsyncOperationManager.ShutdownResult shutdown = manager.shutdown(Duration.ofSeconds(1));
+
+        assertTrue(shutdown.drained());
+        assertTrue(future.isDone());
+        assertTrue(future.isCompletedExceptionally());
+        assertInt(0, manager.trackedOperationCount());
+        executor.runAll();
+        assertFalse(mutated.get());
+    }
+
+    private static void runningOperationDelaysSafeClose() throws Exception {
+        ExecutorService executor = newLifecycleExecutor();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(executor);
+        AtomicBoolean databaseClosed = new AtomicBoolean();
+        CompletableFuture<Boolean> operation = manager.submit(() -> {
+            started.countDown();
+            await(release);
+            return true;
+        });
+        assertTrue(started.await(5, TimeUnit.SECONDS));
+
+        CompletableFuture<VaultAsyncOperationManager.ShutdownResult> shutdown = CompletableFuture.supplyAsync(() -> {
+            VaultAsyncOperationManager.ShutdownResult result = manager.shutdown(Duration.ofSeconds(5));
+            databaseClosed.set(true);
+            return result;
+        });
+        awaitState(manager, VaultAsyncOperationManager.State.SHUTTING_DOWN);
+        assertFalse(databaseClosed.get());
+        release.countDown();
+
+        VaultAsyncOperationManager.ShutdownResult result = shutdown.get(10, TimeUnit.SECONDS);
+        assertTrue(result.drained());
+        assertTrue(operation.get(5, TimeUnit.SECONDS));
+        assertTrue(databaseClosed.get());
+        assertInt(0, manager.trackedOperationCount());
+        assertEquals(VaultAsyncOperationManager.State.STOPPED, manager.state());
+        executor.shutdownNow();
+        executor.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static void shutdownTimeoutCompletesFutureBeforeDeferredClose() throws Exception {
+        ExecutorService executor = newLifecycleExecutor();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(executor);
+        CompletableFuture<Boolean> operation = manager.submit(() -> {
+            started.countDown();
+            await(release);
+            return true;
+        });
+        assertTrue(started.await(5, TimeUnit.SECONDS));
+
+        VaultAsyncOperationManager.ShutdownResult shutdown = manager.shutdown(Duration.ofMillis(20));
+        AtomicBoolean databaseClosed = new AtomicBoolean();
+        CompletableFuture<Void> databaseClose = shutdown.termination().thenRun(() -> databaseClosed.set(true));
+
+        assertFalse(shutdown.drained());
+        assertTrue(operation.isDone());
+        assertTrue(operation.isCompletedExceptionally());
+        assertFalse(databaseClosed.get());
+        release.countDown();
+        databaseClose.get(5, TimeUnit.SECONDS);
+        assertTrue(databaseClosed.get());
+        assertInt(0, manager.trackedOperationCount());
+        executor.shutdownNow();
+        executor.awaitTermination(5, TimeUnit.SECONDS);
+    }
+
+    private static void submissionAfterShutdownIsRejected() {
+        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(Runnable::run);
+        assertTrue(manager.shutdown(Duration.ZERO).drained());
+        AtomicBoolean mutated = new AtomicBoolean();
+
+        CompletableFuture<Boolean> future = manager.submit(() -> {
+            mutated.set(true);
+            return true;
+        });
+
+        assertTrue(future.isDone());
+        assertTrue(future.isCompletedExceptionally());
+        assertFalse(mutated.get());
+        assertInt(0, manager.trackedOperationCount());
+    }
+
+    private static void schedulingFailureCompletesFuture() {
+        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(command -> {
+            throw new java.util.concurrent.RejectedExecutionException("test rejection");
+        });
+
+        CompletableFuture<Boolean> future = manager.submit(() -> true);
+
+        assertTrue(future.isDone());
+        assertTrue(future.isCompletedExceptionally());
+        assertInt(0, manager.trackedOperationCount());
+    }
+
+    private static ExecutorService newLifecycleExecutor() {
+        return Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "meoweco-vault-lifecycle-test");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            latch.await();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting in lifecycle test", interrupted);
+        }
+    }
+
+    private static void awaitState(VaultAsyncOperationManager manager,
+                                   VaultAsyncOperationManager.State expected) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (manager.state() != expected && System.nanoTime() < deadline) {
+            Thread.onSpinWait();
+        }
+        assertEquals(expected, manager.state());
     }
 
     private static void deleteRecursively(Path path) throws Exception {
@@ -300,6 +471,22 @@ public final class VaultUnlockedV2RegressionTest {
             return service;
         }
         @Override public void invalidate(UUID uuid, String currencyId) { }
+    }
+
+    private static final class QueuedExecutor implements Executor {
+        private final Queue<Runnable> tasks = new ConcurrentLinkedQueue<>();
+
+        @Override
+        public void execute(Runnable command) {
+            tasks.add(command);
+        }
+
+        private void runAll() {
+            Runnable task;
+            while ((task = tasks.poll()) != null) {
+                task.run();
+            }
+        }
     }
 
     private static final class TestSQLiteDatabase extends AbstractSQLDatabase {
