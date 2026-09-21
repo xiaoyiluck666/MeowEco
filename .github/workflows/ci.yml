@@ -26,9 +26,3 @@ jobs:
         uses: gradle/actions/wrapper-validation@v4
       - name: Verify and build Paper plugin
         run: bash ./gradlew :meoweco-paper:check :meoweco-paper:shadowJar --no-daemon
-      - name: Upload plugin artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: meoweco-paper
-          path: meoweco-paper/build/libs/meoweco-paper-*.jar
-          if-no-files-found: error

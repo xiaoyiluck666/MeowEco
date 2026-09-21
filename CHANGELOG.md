@@ -2,6 +2,20 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## Distribution - 2026-09-21
+
+### Added
+
+- Added prominent Modrinth download and GitHub Wiki buttons to the project documentation.
+
+### Changed
+
+- Clarified that GitHub is used for source code, CI, and documentation while compiled plugin downloads are distributed through Modrinth.
+
+### Fixed
+
+- Removed the GitHub Actions artifact upload step so CI no longer presents build files as downloads.
+
 ## Documentation - 2026-09-21
 
 ### Added
