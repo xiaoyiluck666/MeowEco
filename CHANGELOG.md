@@ -12,6 +12,7 @@ This file now serves as the running changelog for MeowEco.
 
 - Preserved the legacy single-threshold tax configuration while allowing multiple threshold/rate tiers.
 - Updated the Chinese and English Wiki with progressive-tax examples and calculation guidance.
+- Updated the project overview to highlight progressive rich-tax and transfer-tax tiers.
 
 ### Fixed
 

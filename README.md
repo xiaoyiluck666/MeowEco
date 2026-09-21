@@ -47,7 +47,7 @@ These commands are for contributors and CI verification. **服务器用户请只
 - 🏪 Menu-friendly command flows for shops, VIP pages, exchanges, and reward systems.
 - 🧊 Admin tools for give, take, set, freeze, unfreeze, deduct frozen funds, hide/unhide, reload, and debug.
 - 📊 SQLite and MySQL storage with indexed balance queries for leaderboard and tax workflows.
-- ⚖️ Rich tax rules per currency to slow runaway inflation without manual spreadsheet work.
+- ⚖️ Progressive rich-tax and transfer-tax tiers per currency, applying marginal rates to slow runaway inflation without manual spreadsheet work.
 - 🔄 Dry-run migration from live Vault providers, EssentialsX userdata, or CSV with automatic pre-import backups.
 - 🧾 Transaction audit history for commands, transfers, exchanges, Vault/API writes, tax cycles, and migrations.
 
@@ -59,8 +59,8 @@ Run `/meco policy report` to inspect each currency's total supply, circulating b
 
 ### ⚙️ Adjust
 
-- **Rich tax** removes or redirects balances above a configured threshold.
-- **Transfer tax** turns high-volume transfers into a controlled sink.
+- **Progressive rich tax** removes or redirects balances through configurable marginal wealth brackets.
+- **Progressive transfer tax** turns high-volume transfers into a controlled sink with the same bracket model.
 - **Frozen funds** reserve deposits, support penalties, and gate progression.
 - **Exchange rates** keep currencies independent while defining deliberate conversion paths.
 - **Multiple currencies** separate rewards, premium tokens, and event economies.
