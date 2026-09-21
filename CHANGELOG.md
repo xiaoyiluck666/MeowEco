@@ -12,7 +12,7 @@ This file now serves as the running changelog for MeowEco.
 
 - Clarified that GitHub is used for source code, CI, and documentation while compiled plugin downloads are distributed through Modrinth.
 - Restyled the Modrinth download, GitHub Wiki, and GitHub source links as prominent red badge buttons.
-- Removed the GitHub Actions CI badge from the public project header and aligned the three red entry buttons with the release badge style.
+- Removed the GitHub Actions CI badge from the public project header and changed the three entry links to standard two-segment Shields badges matching the Modrinth badge style.
 
 ### Fixed
 
