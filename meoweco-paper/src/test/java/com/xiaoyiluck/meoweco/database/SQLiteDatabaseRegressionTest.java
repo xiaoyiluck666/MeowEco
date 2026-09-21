@@ -27,6 +27,9 @@ public final class SQLiteDatabaseRegressionTest {
             exchangeRollsBackWhenTargetCurrencyAccountIsMissing(database);
             frozenFundsLimitWithdrawalsAndTaxableBalances(database);
             hiddenAndTaxAccountsAreExcludedFromLeaderboards(database);
+            duplicateUsernamesRemainDistinctInLeaderboards(database);
+            largeBalanceMutationsFailWithoutMoneyLoss(database);
+            setBalanceBindsParametersAndWritesAudit(database);
             precisionReportFindsLegacyOverPrecisionRowsWithoutChangingMoney(database);
             auditRecordsCommittedWritesAndContext(database);
             transferAuditUsesOneTransactionId(database);
@@ -115,6 +118,47 @@ public final class SQLiteDatabaseRegressionTest {
         assertInt(1, top.size());
         assertDouble(100.0D, top.get("Visible"));
         assertDouble(100.0D, database.getTotalBalance(currency));
+    }
+
+    private static void duplicateUsernamesRemainDistinctInLeaderboards(TestSQLiteDatabase database) {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        database.setOfflineName(first, "Unknown");
+        database.setOfflineName(second, "Unknown");
+        database.createAccount(first, "duplicate", 100.0D);
+        database.createAccount(second, "duplicate", 200.0D);
+
+        Map<String, Double> top = database.getTopAccounts("duplicate", 10);
+
+        assertInt(2, top.size());
+        assertDouble(300.0D, top.values().stream().mapToDouble(Double::doubleValue).sum());
+    }
+
+    private static void largeBalanceMutationsFailWithoutMoneyLoss(TestSQLiteDatabase database) throws Exception {
+        double unsafe = 0x1.0p53;
+        UUID large = UUID.randomUUID();
+        UUID sender = UUID.randomUUID();
+        database.insertRawAccount(large, "large", unsafe, 0.0D, "Large", false);
+        database.insertRawAccount(sender, "large", 10.0D, 0.0D, "Sender", false);
+
+        assertFalse(database.deposit(large, "large", 1.0D));
+        assertDouble(unsafe, database.getBalance(large, "large"));
+        assertFalse(database.transfer(sender, large, "large", 1.0D));
+        assertDouble(10.0D, database.getBalance(sender, "large"));
+        assertDouble(unsafe, database.getBalance(large, "large"));
+    }
+
+    private static void setBalanceBindsParametersAndWritesAudit(TestSQLiteDatabase database) {
+        UUID player = UUID.randomUUID();
+        database.setOfflineName(player, "Setter");
+        database.createAccount(player, "set-test", 70.0D);
+
+        assertTrue(database.updateBalance(player, "set-test", 125.0D));
+        assertDouble(125.0D, database.getBalance(player, "set-test"));
+        AuditEntry entry = database.getAuditHistory(player, "set-test", 1).get(0);
+        assertEquals("SET_BALANCE", entry.operation());
+        assertDouble(70.0D, entry.balanceBefore());
+        assertDouble(125.0D, entry.balanceAfter());
     }
 
     private static void precisionReportFindsLegacyOverPrecisionRowsWithoutChangingMoney(TestSQLiteDatabase database) throws Exception {

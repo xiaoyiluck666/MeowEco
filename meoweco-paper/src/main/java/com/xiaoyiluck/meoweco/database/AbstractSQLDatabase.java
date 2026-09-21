@@ -29,6 +29,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public abstract class AbstractSQLDatabase implements DatabaseManager {
+    private static final double MAX_SAFE_BALANCE = 0x1.fffffffffffffp52;
     private static final int CURRENT_SCHEMA_VERSION = 2;
     private static final String TABLE_NAME = "meoweco_accounts";
     private static final String AUDIT_TABLE_NAME = "meoweco_audit_log";
@@ -386,11 +387,11 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     private boolean isPositiveFinite(double amount) {
-        return Double.isFinite(amount) && amount > 0.0;
+        return Double.isFinite(amount) && amount > 0.0 && amount <= MAX_SAFE_BALANCE;
     }
 
     private boolean isNonNegativeFinite(double amount) {
-        return Double.isFinite(amount) && amount >= 0.0;
+        return Double.isFinite(amount) && amount >= 0.0 && amount <= MAX_SAFE_BALANCE;
     }
 
     private boolean isClosedDataSourceError(SQLException e) {
@@ -503,8 +504,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         if (!isPositiveFinite(amount)) {
             return false;
         }
-        String sql = "UPDATE " + getTableName() + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
-        return executeAccountUpdate(sql, "Deposit error", uuid, currency, "DEPOSIT", amount, amount);
+        String sql = "UPDATE " + getTableName() + " SET balance = balance + ? WHERE balance + ? <= ? AND uuid = ? AND currency = ?";
+        return executeAccountUpdate(sql, "Deposit error", uuid, currency, "DEPOSIT", amount,
+                amount, amount, MAX_SAFE_BALANCE);
     }
 
     @Override
@@ -512,7 +514,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         if (!isNonNegativeFinite(amount)) {
             return false;
         }
-        String sql = "UPDATE " + getTableName() + " SET balance = ? WHERE uuid = ? AND currency = ? AND frozen_balance <= ?";
+        String sql = "UPDATE " + getTableName() + " SET balance = ? WHERE frozen_balance <= ? AND uuid = ? AND currency = ?";
         return executeAccountUpdate(sql, "UpdateBalance error", uuid, currency, "SET_BALANCE", null, amount, amount);
     }
 
@@ -544,7 +546,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
         String withdrawSql = "UPDATE " + getTableName()
                 + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
-        String depositSql = "UPDATE " + getTableName() + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
+        String depositSql = "UPDATE " + getTableName() + " SET balance = balance + ? WHERE uuid = ? AND currency = ? AND balance + ? <= ?";
 
         try (Connection conn = getConnection()) {
             boolean originalAutoCommit = conn.getAutoCommit();
@@ -571,6 +573,8 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 psDeposit.setDouble(1, depositAmount);
                 psDeposit.setString(2, to.toString());
                 psDeposit.setString(3, currency);
+                psDeposit.setDouble(4, depositAmount);
+                psDeposit.setDouble(5, MAX_SAFE_BALANCE);
                 int depositRows = psDeposit.executeUpdate();
 
                 if (depositRows == 0) {
@@ -581,6 +585,11 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 String transactionId = UUID.randomUUID().toString();
                 AccountSnapshot fromAfter = readAccountSnapshot(conn, from, currency);
                 AccountSnapshot toAfter = readAccountSnapshot(conn, to, currency);
+                if (!deltaMatches(fromBefore.balance(), fromAfter.balance(), withdrawAmount, false)
+                        || !deltaMatches(toBefore.balance(), toAfter.balance(), depositAmount, true)) {
+                    conn.rollback();
+                    return false;
+                }
                 insertAudit(conn, transactionId, from, currency, "TRANSFER_OUT", -withdrawAmount, fromBefore, fromAfter);
                 insertAudit(conn, transactionId, to, currency, "TRANSFER_IN", depositAmount, toBefore, toAfter);
                 conn.commit();
@@ -609,7 +618,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         String withdrawSql = "UPDATE " + getTableName()
                 + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
         String depositSql = "UPDATE " + getTableName()
-                + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
+                + " SET balance = balance + ? WHERE uuid = ? AND currency = ? AND balance + ? <= ?";
 
         try (Connection conn = getConnection()) {
             boolean originalAutoCommit = conn.getAutoCommit();
@@ -636,6 +645,8 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 psDeposit.setDouble(1, depositAmount);
                 psDeposit.setString(2, uuid.toString());
                 psDeposit.setString(3, toCurrency);
+                psDeposit.setDouble(4, depositAmount);
+                psDeposit.setDouble(5, MAX_SAFE_BALANCE);
 
                 int depositRows = psDeposit.executeUpdate();
                 if (depositRows == 0) {
@@ -646,6 +657,11 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 String transactionId = UUID.randomUUID().toString();
                 AccountSnapshot fromAfter = readAccountSnapshot(conn, uuid, fromCurrency);
                 AccountSnapshot toAfter = readAccountSnapshot(conn, uuid, toCurrency);
+                if (!deltaMatches(fromBefore.balance(), fromAfter.balance(), withdrawAmount, false)
+                        || !deltaMatches(toBefore.balance(), toAfter.balance(), depositAmount, true)) {
+                    conn.rollback();
+                    return false;
+                }
                 insertAudit(conn, transactionId, uuid, fromCurrency, "EXCHANGE_OUT", -withdrawAmount, fromBefore, fromAfter);
                 insertAudit(conn, transactionId, uuid, toCurrency, "EXCHANGE_IN", depositAmount, toBefore, toAfter);
                 conn.commit();
@@ -794,7 +810,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         debug("Database Query: getTopAccounts for currency '" + currency + "' limit " + limit
                 + " (excluding hidden and 'tax' accounts)");
         Map<String, Double> top = new LinkedHashMap<>();
-        String sql = "SELECT username, balance FROM " + getTableName()
+        String sql = "SELECT username, uuid, balance FROM " + getTableName()
                 + " WHERE currency = ? AND hidden = 0 AND LOWER(username) <> 'tax' ORDER BY balance DESC LIMIT ?";
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -802,7 +818,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             ps.setInt(2, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String user = rs.getString(COLUMN_USERNAME);
+                    String user = uniqueDisplayName(rs.getString(COLUMN_USERNAME), rs.getString(COLUMN_UUID), top);
                     double balance = rs.getDouble(COLUMN_BALANCE);
                     top.put(user, balance);
                     debug("Found top account: " + user + " = " + balance);
@@ -812,6 +828,20 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             logSqlError("GetTopAccounts error", e);
         }
         return top;
+    }
+
+    private String uniqueDisplayName(String username, String uuid, Map<String, Double> existing) {
+        String base = username == null || username.isBlank() ? "Unknown" : username;
+        if (!existing.containsKey(base)) {
+            return base;
+        }
+        String suffix = uuid == null || uuid.isBlank() ? "account" : uuid.substring(0, Math.min(8, uuid.length()));
+        String candidate = base + " (" + suffix + ")";
+        int index = 2;
+        while (existing.containsKey(candidate)) {
+            candidate = base + " (" + suffix + "-" + index++ + ")";
+        }
+        return candidate;
     }
 
     @Override
@@ -1060,6 +1090,11 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 }
 
                 AccountSnapshot after = readAccountSnapshot(conn, uuid, currency);
+                if (!matchesAccountUpdate(operation, auditAmount, params, before, after)) {
+                    conn.rollback();
+                    debug("Balance delta was not represented exactly for " + uuid + " / " + currency);
+                    return false;
+                }
                 double amount = auditAmount == null
                         ? nonZeroDifference(after.balance() - before.balance(), after.frozen() - before.frozen())
                         : auditAmount;
@@ -1276,6 +1311,34 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     private double nonZeroDifference(double balanceDifference, double frozenDifference) {
         return Math.abs(balanceDifference) > 0.0000001D ? balanceDifference : frozenDifference;
+    }
+
+    private boolean matchesAccountUpdate(String operation, Double requestedAmount, Object[] params,
+                                         AccountSnapshot before, AccountSnapshot after) {
+        double amount = params.length > 0 && params[0] instanceof Number number ? number.doubleValue() : 0.0D;
+        return switch (operation) {
+            case "DEPOSIT" -> deltaMatches(before.balance(), after.balance(), requestedAmount, true);
+            case "WITHDRAW" -> deltaMatches(before.balance(), after.balance(), requestedAmount, false);
+            case "FREEZE" -> deltaMatches(before.frozen(), after.frozen(), requestedAmount, true);
+            case "UNFREEZE" -> deltaMatches(before.frozen(), after.frozen(), Math.abs(requestedAmount), false);
+            case "DEDUCT_FROZEN" -> deltaMatches(before.balance(), after.balance(), Math.abs(requestedAmount), false)
+                    && deltaMatches(before.frozen(), after.frozen(), Math.abs(requestedAmount), false);
+            case "SET_BALANCE" -> Double.compare(after.balance(), amount) == 0;
+            case "SET_FROZEN" -> Double.compare(after.frozen(), amount) == 0;
+            default -> true;
+        };
+    }
+
+    private boolean deltaMatches(double before, double after, double expected, boolean increase) {
+        if (expected == 0.0D) {
+            return Double.compare(before, after) == 0;
+        }
+        double actual = after - before;
+        if (increase ? actual <= 0.0D : actual >= 0.0D) {
+            return false;
+        }
+        double magnitude = Math.abs(expected);
+        return Math.abs(Math.abs(actual) - magnitude) <= Math.max(1.0e-9D, magnitude * 1.0e-12D);
     }
 
     private String cleanUsername(String username) {

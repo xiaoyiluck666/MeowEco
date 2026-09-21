@@ -2,6 +2,23 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## v26.10.3 - 2026-09-21
+
+### Added
+
+- Added regression coverage for administrator balance updates, large-balance mutations, and duplicate leaderboard names.
+
+### Changed
+
+- Bumped the project version to `26.10.3`.
+- Leaderboard entries now preserve accounts with duplicate display names by adding a short UUID suffix.
+
+### Fixed
+
+- Fixed `/meco set` parameter binding and audit recording.
+- Prevented balance mutations above the exact `double` safe range from reporting success or destroying money.
+- Added the missing localized message for exchange commands when exchange rates are disabled.
+
 ## v26.10.2 - 2026-09-07
 
 ### Added

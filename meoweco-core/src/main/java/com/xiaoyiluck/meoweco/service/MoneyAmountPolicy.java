@@ -6,15 +6,18 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 public final class MoneyAmountPolicy {
+    /** Largest balance for which every whole-unit increment remains exact in a double. */
+    public static final double MAX_SAFE_BALANCE = 0x1.fffffffffffffp52;
+
     private MoneyAmountPolicy() {
     }
 
     public static boolean isPositiveFinite(double amount) {
-        return Double.isFinite(amount) && amount > 0.0D;
+        return Double.isFinite(amount) && amount > 0.0D && amount <= MAX_SAFE_BALANCE;
     }
 
     public static boolean isNonNegativeFinite(double amount) {
-        return Double.isFinite(amount) && amount >= 0.0D;
+        return Double.isFinite(amount) && amount >= 0.0D && amount <= MAX_SAFE_BALANCE;
     }
 
     public static boolean fitsCurrencyScale(double amount, Currency currency) {

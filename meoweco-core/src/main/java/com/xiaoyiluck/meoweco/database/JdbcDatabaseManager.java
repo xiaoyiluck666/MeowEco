@@ -19,6 +19,7 @@ import java.util.logging.Logger;
 
 public class JdbcDatabaseManager implements DatabaseManager {
     private static final String TABLE_NAME = "meoweco_accounts";
+    private static final double MAX_SAFE_BALANCE = 0x1.fffffffffffffp52;
 
     private final Logger logger;
     private final StorageConfig storageConfig;
@@ -97,11 +98,11 @@ public class JdbcDatabaseManager implements DatabaseManager {
     }
 
     private boolean isPositiveFinite(double amount) {
-        return Double.isFinite(amount) && amount > 0;
+        return Double.isFinite(amount) && amount > 0 && amount <= MAX_SAFE_BALANCE;
     }
 
     private boolean isNonNegativeFinite(double amount) {
-        return Double.isFinite(amount) && amount >= 0;
+        return Double.isFinite(amount) && amount >= 0 && amount <= MAX_SAFE_BALANCE;
     }
 
     @Override
@@ -181,7 +182,8 @@ public class JdbcDatabaseManager implements DatabaseManager {
         if (!isPositiveFinite(amount)) {
             return false;
         }
-        return executeAccountUpdate("UPDATE " + TABLE_NAME + " SET balance = balance + ? WHERE uuid = ? AND currency = ?", amount, uuid, currency);
+        return executeAccountUpdate("UPDATE " + TABLE_NAME + " SET balance = balance + ? WHERE uuid = ? AND currency = ? AND balance + ? <= ?",
+                amount, uuid, currency, amount, MAX_SAFE_BALANCE);
     }
 
     @Override
@@ -210,7 +212,7 @@ public class JdbcDatabaseManager implements DatabaseManager {
         }
 
         String withdrawSql = "UPDATE " + TABLE_NAME + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
-        String depositSql = "UPDATE " + TABLE_NAME + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
+        String depositSql = "UPDATE " + TABLE_NAME + " SET balance = balance + ? WHERE uuid = ? AND currency = ? AND balance + ? <= ?";
 
         try (Connection connection = getConnection()) {
             connection.setAutoCommit(false);
@@ -228,6 +230,8 @@ public class JdbcDatabaseManager implements DatabaseManager {
                 depositStatement.setDouble(1, depositAmount);
                 depositStatement.setString(2, to.toString());
                 depositStatement.setString(3, currency.toLowerCase());
+                depositStatement.setDouble(4, depositAmount);
+                depositStatement.setDouble(5, MAX_SAFE_BALANCE);
                 if (depositStatement.executeUpdate() != 1) {
                     connection.rollback();
                     return false;
@@ -254,7 +258,7 @@ public class JdbcDatabaseManager implements DatabaseManager {
         }
 
         String withdrawSql = "UPDATE " + TABLE_NAME + " SET balance = balance - ? WHERE uuid = ? AND currency = ? AND balance - frozen_balance >= ?";
-        String depositSql = "UPDATE " + TABLE_NAME + " SET balance = balance + ? WHERE uuid = ? AND currency = ?";
+        String depositSql = "UPDATE " + TABLE_NAME + " SET balance = balance + ? WHERE uuid = ? AND currency = ? AND balance + ? <= ?";
 
         try (Connection connection = getConnection()) {
             connection.setAutoCommit(false);
@@ -272,6 +276,8 @@ public class JdbcDatabaseManager implements DatabaseManager {
                 depositStatement.setDouble(1, depositAmount);
                 depositStatement.setString(2, uuid.toString());
                 depositStatement.setString(3, toCurrency.toLowerCase());
+                depositStatement.setDouble(4, depositAmount);
+                depositStatement.setDouble(5, MAX_SAFE_BALANCE);
                 if (depositStatement.executeUpdate() != 1) {
                     connection.rollback();
                     return false;
@@ -394,14 +400,28 @@ public class JdbcDatabaseManager implements DatabaseManager {
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     String username = resultSet.getString("username");
-                    String fallback = resultSet.getString("uuid");
-                    topAccounts.put(username != null && !username.isBlank() ? username : fallback, resultSet.getDouble("balance"));
+                    String uuid = resultSet.getString("uuid");
+                    String displayName = uniqueDisplayName(username != null && !username.isBlank() ? username : "Unknown", uuid, topAccounts);
+                    topAccounts.put(displayName, resultSet.getDouble("balance"));
                 }
             }
         } catch (SQLException e) {
             logSqlError("Failed to query top accounts", e);
         }
         return topAccounts;
+    }
+
+    private String uniqueDisplayName(String username, String uuid, Map<String, Double> existing) {
+        if (!existing.containsKey(username)) {
+            return username;
+        }
+        String suffix = uuid == null || uuid.isBlank() ? "account" : uuid.substring(0, Math.min(8, uuid.length()));
+        String candidate = username + " (" + suffix + ")";
+        int index = 2;
+        while (existing.containsKey(candidate)) {
+            candidate = username + " (" + suffix + "-" + index++ + ")";
+        }
+        return candidate;
     }
 
     @Override

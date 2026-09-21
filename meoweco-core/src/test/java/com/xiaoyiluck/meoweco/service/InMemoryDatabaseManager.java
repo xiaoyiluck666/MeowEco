@@ -45,7 +45,7 @@ final class InMemoryDatabaseManager implements DatabaseManager {
     @Override
     public boolean updateBalance(UUID uuid, String currency, double amount) {
         Account account = account(uuid, currency);
-        if (!Double.isFinite(amount) || amount < account.frozen) return false;
+        if (!Double.isFinite(amount) || amount < account.frozen || amount > MoneyAmountPolicy.MAX_SAFE_BALANCE) return false;
         account.balance = amount;
         return true;
     }
@@ -60,7 +60,12 @@ final class InMemoryDatabaseManager implements DatabaseManager {
         if (!positive(amount)) {
             return false;
         }
-        account(uuid, currency).balance += amount;
+        Account target = account(uuid, currency);
+        double after = target.balance + amount;
+        if (after > MoneyAmountPolicy.MAX_SAFE_BALANCE || after <= target.balance) {
+            return false;
+        }
+        target.balance = after;
         return true;
     }
 
@@ -94,7 +99,13 @@ final class InMemoryDatabaseManager implements DatabaseManager {
             return false;
         }
         fromAccount.balance -= withdrawAmount;
-        account(to, currency).balance += depositAmount;
+        Account recipient = account(to, currency);
+        double after = recipient.balance + depositAmount;
+        if (after > MoneyAmountPolicy.MAX_SAFE_BALANCE || (depositAmount > 0.0D && after <= recipient.balance)) {
+            fromAccount.balance += withdrawAmount;
+            return false;
+        }
+        recipient.balance = after;
         return true;
     }
 
@@ -109,7 +120,13 @@ final class InMemoryDatabaseManager implements DatabaseManager {
             return false;
         }
         fromAccount.balance -= withdrawAmount;
-        account(uuid, toCurrency).balance += depositAmount;
+        Account recipient = account(uuid, toCurrency);
+        double after = recipient.balance + depositAmount;
+        if (after > MoneyAmountPolicy.MAX_SAFE_BALANCE || after <= recipient.balance) {
+            fromAccount.balance += withdrawAmount;
+            return false;
+        }
+        recipient.balance = after;
         return true;
     }
 
@@ -196,7 +213,13 @@ final class InMemoryDatabaseManager implements DatabaseManager {
                 .filter(entry -> !"tax".equalsIgnoreCase(names.get(entry.getKey().uuid)))
                 .sorted(Map.Entry.<Key, Account>comparingByValue(Comparator.comparingDouble(account -> account.balance)).reversed())
                 .limit(limit)
-                .forEach(entry -> result.put(names.getOrDefault(entry.getKey().uuid, entry.getKey().uuid.toString()), entry.getValue().balance));
+                .forEach(entry -> {
+                    String name = names.getOrDefault(entry.getKey().uuid, "Unknown");
+                    if (result.containsKey(name)) {
+                        name = name + " (" + entry.getKey().uuid.toString().substring(0, 8) + ")";
+                    }
+                    result.put(name, entry.getValue().balance);
+                });
         return result;
     }
 
