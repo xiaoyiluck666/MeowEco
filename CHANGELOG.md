@@ -2,6 +2,21 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## Documentation - 2026-09-21
+
+### Added
+
+- Added a clearer anti-inflation policy loop to the project description: measure supply, adjust policy, and verify outcomes with audit data.
+
+### Changed
+
+- Refreshed the README product introduction and feature highlights with clearer positioning and visual markers.
+- Synchronized the same positioning and release information to the Modrinth project page.
+
+### Fixed
+
+- None.
+
 ## v26.10.3 - 2026-09-21
 
 ### Added
