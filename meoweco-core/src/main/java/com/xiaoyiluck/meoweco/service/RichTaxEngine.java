@@ -4,6 +4,7 @@ import com.xiaoyiluck.meoweco.database.DatabaseManager;
 import com.xiaoyiluck.meoweco.objects.Currency;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -21,7 +22,7 @@ public final class RichTaxEngine {
 
         for (Currency currency : currencies.values()) {
             Rule rule = settings.ruleFor(currency.getId());
-            if (rule == null || !rule.enabled() || rule.rate() <= 0.0D) {
+            if (rule == null || !rule.enabled() || rule.tiers().stream().noneMatch(tier -> tier.rate() > 0.0D)) {
                 continue;
             }
 
@@ -30,7 +31,8 @@ public final class RichTaxEngine {
                 databaseManager.createAccount(collectorUuid, currencyId, 0.0D);
             }
 
-            Map<UUID, Double> taxableAccounts = databaseManager.getAccountsAboveBalance(currencyId, rule.threshold());
+            double minimumThreshold = rule.tiers().get(0).threshold();
+            Map<UUID, Double> taxableAccounts = databaseManager.getAccountsAboveBalance(currencyId, minimumThreshold);
             if (taxableAccounts.isEmpty()) {
                 continue;
             }
@@ -42,12 +44,7 @@ public final class RichTaxEngine {
                 if (collectorUuid != null && collectorUuid.equals(entry.getKey())) {
                     continue;
                 }
-                double taxableAmount = entry.getValue() - rule.threshold();
-                if (taxableAmount <= 0.0D) {
-                    continue;
-                }
-
-                double taxAmount = MoneyAmountPolicy.roundForStorage(taxableAmount * rule.rate(), currency);
+                double taxAmount = MoneyAmountPolicy.roundForStorage(TaxPolicy.calculate(entry.getValue(), rule.tiers()), currency);
                 if (!Double.isFinite(taxAmount) || taxAmount <= 0.0D) {
                     continue;
                 }
@@ -66,7 +63,7 @@ public final class RichTaxEngine {
             if (taxedAccountsForCurrency > 0) {
                 totalCollected += collectedForCurrency;
                 totalTaxedAccounts += taxedAccountsForCurrency;
-                perCurrency.put(currencyId, new CurrencyCycleResult(currencyId, collectedForCurrency, taxedAccountsForCurrency, rule.threshold(), rule.rate()));
+                perCurrency.put(currencyId, new CurrencyCycleResult(currencyId, collectedForCurrency, taxedAccountsForCurrency, rule.tiers()));
             }
         }
 
@@ -85,17 +82,21 @@ public final class RichTaxEngine {
         }
     }
 
-    public record Rule(boolean enabled, double threshold, double rate) {
+    public record Rule(boolean enabled, List<TaxPolicy.Tier> tiers) {
+        public Rule(boolean enabled, double threshold, double rate) {
+            this(enabled, TaxPolicy.normalize(List.of(), threshold, rate));
+        }
+
         public Rule {
-            if (!Double.isFinite(threshold) || threshold < 0.0D) {
-                threshold = 0.0D;
-            }
-            if (!Double.isFinite(rate) || rate < 0.0D) {
-                rate = 0.0D;
-            }
-            if (rate > 1.0D) {
-                rate = 1.0D;
-            }
+            tiers = TaxPolicy.normalize(tiers, 0.0D, 0.0D);
+        }
+
+        public double threshold() {
+            return tiers.get(0).threshold();
+        }
+
+        public double rate() {
+            return tiers.get(0).rate();
         }
     }
 
@@ -108,7 +109,14 @@ public final class RichTaxEngine {
         }
     }
 
-    public record CurrencyCycleResult(String currencyId, double collectedAmount, int taxedAccounts, double threshold, double rate) {
+    public record CurrencyCycleResult(String currencyId, double collectedAmount, int taxedAccounts, List<TaxPolicy.Tier> tiers) {
+        public double threshold() {
+            return tiers.get(0).threshold();
+        }
+
+        public double rate() {
+            return tiers.get(0).rate();
+        }
     }
 
     public record CycleResult(double totalCollected, int totalTaxedAccounts, Map<String, CurrencyCycleResult> perCurrency, UUID collectorUuid) {

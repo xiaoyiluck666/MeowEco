@@ -3,6 +3,7 @@ package com.xiaoyiluck.meoweco.service;
 import com.xiaoyiluck.meoweco.objects.Currency;
 
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 
 public final class CoreEconomyRegressionTest {
@@ -23,6 +24,7 @@ public final class CoreEconomyRegressionTest {
         adminFrozenFundOperationsRespectAvailableAndFrozenBalances();
         systemTaxWithdrawsOnlyAmountAboveThreshold();
         richTaxRoundsTaxToCurrencyPrecision();
+        progressiveTaxUsesMarginalTiers();
         playerTaxTransfersCollectedAmountToCollector();
         disabledOrMissingCurrencyRulesAreSkipped();
         ruleClampsInvalidValues();
@@ -111,6 +113,14 @@ public final class CoreEconomyRegressionTest {
         assertTrue(result.hasTaxedAccounts());
         assertDouble(16.65D, result.totalCollected());
         assertDouble(133.35D, database.getBalance(rich, "taxed"));
+    }
+
+    private static void progressiveTaxUsesMarginalTiers() {
+        double tax = TaxPolicy.calculate(1_000.0D, List.of(
+                new TaxPolicy.Tier(0.0D, 0.01D),
+                new TaxPolicy.Tier(500.0D, 0.05D)
+        ));
+        assertDouble(30.0D, tax);
     }
 
     private static void payRejectsInvalidOrUnavailableAmounts() {

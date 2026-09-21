@@ -2,6 +2,21 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## Progressive Taxes - 2026-09-21
+
+### Added
+
+- Added marginal progressive tax tiers for rich tax and per-currency transfer tax.
+
+### Changed
+
+- Preserved the legacy single-threshold tax configuration while allowing multiple threshold/rate tiers.
+- Updated the Chinese and English Wiki with progressive-tax examples and calculation guidance.
+
+### Fixed
+
+- Added regression coverage for marginal tier calculations.
+
 ## Distribution - 2026-09-21
 
 ### Added

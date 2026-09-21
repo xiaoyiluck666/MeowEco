@@ -78,8 +78,7 @@ public class EconomyService {
             return PayResult.invalid();
         }
 
-        double taxRate = clamp(currency.getTransferTax(), 0.0, 1.0);
-        double tax = MoneyAmountPolicy.roundForStorage(withdrawAmount * taxRate, currency);
+        double tax = MoneyAmountPolicy.roundForStorage(TaxPolicy.calculate(withdrawAmount, currency.getTransferTaxTiers()), currency);
         double depositAmount = MoneyAmountPolicy.roundForStorage(withdrawAmount - tax, currency);
         if (!Double.isFinite(depositAmount) || depositAmount < 0) {
             return PayResult.invalid();
@@ -118,10 +117,6 @@ public class EconomyService {
             case "deductfrozen" -> MoneyAmountPolicy.isPositiveFinite(normalizedAmount) && databaseManager.deductFrozen(uuid, currency.getId(), normalizedAmount);
             default -> false;
         };
-    }
-
-    private double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
     }
 
     public record BalanceResult(boolean exists, double balance, double frozen) {

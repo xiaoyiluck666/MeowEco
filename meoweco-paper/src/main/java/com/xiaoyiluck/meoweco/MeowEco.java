@@ -14,6 +14,7 @@ import com.xiaoyiluck.meoweco.tax.RichTaxService;
 import com.xiaoyiluck.meoweco.utils.ConfigManager;
 import com.xiaoyiluck.meoweco.utils.UpdateChecker;
 import com.xiaoyiluck.meoweco.objects.Currency;
+import com.xiaoyiluck.meoweco.service.TaxPolicy;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.ServicePriority;
@@ -26,6 +27,8 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import java.util.Collections;
@@ -268,8 +271,9 @@ public class MeowEco extends JavaPlugin {
                 double initial = currSection.getDouble("initial-balance", 0.0);
                 int decimal = currSection.getInt("decimal-places", 2);
                 double tax = currSection.getDouble("transfer-tax", 0.0);
+                List<TaxPolicy.Tier> taxTiers = readTaxTiers(currSection.getMapList("transfer-tax-tiers"), tax);
 
-                Currency currency = new Currency(id, displayName, singular, plural, initial, decimal, tax);
+                Currency currency = new Currency(id, displayName, singular, plural, initial, decimal, tax, taxTiers);
                 loadedCurrencies.put(id, currency);
                 debug("Loaded currency: " + id + " (Name: " + displayName + ", Initial: " + initial + ")");
             }
@@ -303,7 +307,20 @@ public class MeowEco extends JavaPlugin {
         double initial = getConfig().getDouble("currency.initial-balance", 100.0);
         int decimal = getConfig().getInt("currency.decimal-places", 2);
         double tax = getConfig().getDouble("currency.transfer-tax", 0.0);
-        return new Currency(FALLBACK_CURRENCY_ID, "Coins", singular, plural, initial, decimal, tax);
+        List<TaxPolicy.Tier> taxTiers = readTaxTiers(getConfig().getMapList("currency.transfer-tax-tiers"), tax);
+        return new Currency(FALLBACK_CURRENCY_ID, "Coins", singular, plural, initial, decimal, tax, taxTiers);
+    }
+
+    private List<TaxPolicy.Tier> readTaxTiers(List<Map<?, ?>> rawTiers, double fallbackRate) {
+        List<TaxPolicy.Tier> tiers = new ArrayList<>();
+        for (Map<?, ?> rawTier : rawTiers) {
+            Object rawThreshold = rawTier.get("threshold");
+            Object rawRate = rawTier.get("rate");
+            if (rawThreshold instanceof Number threshold && rawRate instanceof Number rate) {
+                tiers.add(new TaxPolicy.Tier(threshold.doubleValue(), rate.doubleValue()));
+            }
+        }
+        return TaxPolicy.normalize(tiers, 0.0D, fallbackRate);
     }
 
     private void loadExchangeRates() {

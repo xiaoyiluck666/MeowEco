@@ -90,10 +90,17 @@ final class PolicyCommand {
                 continue;
             }
             Component enabledValue = rule.getBoolean("enabled", true) ? enabledLabel : disabledLabel;
+            String tiers = rule.getMapList("tiers").stream()
+                    .map(tier -> String.valueOf(tier.get("threshold")) + "→" + formatPercent(tier.get("rate") instanceof Number rate ? rate.doubleValue() * 100.0D : 0.0D))
+                    .collect(java.util.stream.Collectors.joining(", "));
+            if (tiers.isBlank()) {
+                tiers = String.valueOf(rule.getDouble("threshold", 0.0D)) + "→" + formatPercent(rule.getDouble("rate", 0.0D) * 100.0D);
+            }
+            String tierSummary = tiers;
             sender.sendMessage(ruleTemplate
                     .replaceText(config -> config.matchLiteral("%currency%").replacement(id.toLowerCase(Locale.ROOT)))
-                    .replaceText(config -> config.matchLiteral("%threshold%").replacement(String.valueOf(rule.getDouble("threshold", 0.0D))))
-                    .replaceText(config -> config.matchLiteral("%rate%").replacement(formatPercent(rule.getDouble("rate", 0.0D) * 100.0D)))
+                    .replaceText(config -> config.matchLiteral("%threshold%").replacement(tierSummary))
+                    .replaceText(config -> config.matchLiteral("%rate%").replacement("progressive"))
                     .replaceText(config -> config.matchLiteral("%enabled%").replacement(enabledValue)));
         }
     }

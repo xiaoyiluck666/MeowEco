@@ -14,12 +14,15 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Locale;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.xiaoyiluck.meoweco.service.RichTaxEngine;
+import com.xiaoyiluck.meoweco.service.TaxPolicy;
 
 public class RichTaxService {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("H:mm");
@@ -73,7 +76,7 @@ public class RichTaxService {
             Map<String, RichTaxEngine.Rule> rules = new java.util.LinkedHashMap<>();
             for (Map.Entry<String, RichTaxRule> entry : settings.currencyRules().entrySet()) {
                 RichTaxRule rule = entry.getValue();
-                rules.put(entry.getKey(), new RichTaxEngine.Rule(rule.enabled(), rule.threshold(), rule.rate()));
+                rules.put(entry.getKey(), new RichTaxEngine.Rule(rule.enabled(), rule.tiers()));
             }
 
             RichTaxEngine.Settings engineSettings = new RichTaxEngine.Settings(
@@ -146,7 +149,7 @@ public class RichTaxService {
                 boolean currencyEnabled = ruleSection.getBoolean("enabled", true);
                 double threshold = Math.max(0.0D, ruleSection.getDouble("threshold", 100000.0D));
                 double rate = clampRate(ruleSection.getDouble("rate", 0.05D));
-                currencyRules.put(normalizeCurrencyId(rawCurrencyId), new RichTaxRule(currencyEnabled, threshold, rate));
+                currencyRules.put(normalizeCurrencyId(rawCurrencyId), new RichTaxRule(currencyEnabled, readTaxTiers(ruleSection.getMapList("tiers"), threshold, rate)));
             }
         }
 
@@ -167,6 +170,18 @@ public class RichTaxService {
 
     private static String normalizeCurrencyId(String currencyId) {
         return currencyId == null ? "" : currencyId.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private List<TaxPolicy.Tier> readTaxTiers(List<Map<?, ?>> rawTiers, double fallbackThreshold, double fallbackRate) {
+        List<TaxPolicy.Tier> tiers = new ArrayList<>();
+        for (Map<?, ?> rawTier : rawTiers) {
+            Object rawThreshold = rawTier.get("threshold");
+            Object rawRate = rawTier.get("rate");
+            if (rawThreshold instanceof Number tierThreshold && rawRate instanceof Number tierRate) {
+                tiers.add(new TaxPolicy.Tier(tierThreshold.doubleValue(), tierRate.doubleValue()));
+            }
+        }
+        return TaxPolicy.normalize(tiers, fallbackThreshold, fallbackRate);
     }
 
     private double clampRate(double rate) {
@@ -272,8 +287,7 @@ public class RichTaxService {
 
     private record RichTaxRule(
             boolean enabled,
-            double threshold,
-            double rate
+            List<TaxPolicy.Tier> tiers
     ) {
     }
 
