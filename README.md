@@ -1,9 +1,8 @@
 # MeowEco Economy
 
-[![CI](https://github.com/xiaoyiluck666/MeowEco/actions/workflows/ci.yml/badge.svg)](https://github.com/xiaoyiluck666/MeowEco/actions/workflows/ci.yml)
 [![Modrinth](https://img.shields.io/modrinth/dt/meoweco?logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/meoweco)
 
-[![⬇️ 从 Modrinth 下载](https://img.shields.io/badge/⬇️_从_Modrinth_下载-E53935?style=for-the-badge&logo=modrinth&logoColor=white)](https://modrinth.com/plugin/meoweco/versions) [![📚 GitHub Wiki 文档](https://img.shields.io/badge/📚_GitHub_Wiki_文档-E53935?style=for-the-badge&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco/wiki) [![💻 GitHub 源码](https://img.shields.io/badge/💻_GitHub_源码-E53935?style=for-the-badge&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco)
+[![⬇️ 从 Modrinth 下载](https://img.shields.io/badge/⬇️_从_Modrinth_下载-E53935?style=for-the-badge&logo=modrinth&logoColor=white)](https://modrinth.com/plugin/meoweco/versions)&nbsp;&nbsp;[![📚 GitHub Wiki 文档](https://img.shields.io/badge/📚_GitHub_Wiki_文档-E53935?style=for-the-badge&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco/wiki)&nbsp;&nbsp;[![💻 GitHub 源码](https://img.shields.io/badge/💻_GitHub_源码-E53935?style=for-the-badge&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco)
 
 **🧊 Measure inflation. Tune policy. Keep every balance change explainable.**
 
