@@ -11,6 +11,7 @@ This file now serves as the running changelog for MeowEco.
 ### Changed
 
 - Clarified that GitHub is used for source code, CI, and documentation while compiled plugin downloads are distributed through Modrinth.
+- Restyled the Modrinth download, GitHub Wiki, and GitHub source links as prominent red badge buttons.
 
 ### Fixed
 
