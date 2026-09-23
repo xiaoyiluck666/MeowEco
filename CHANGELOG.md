@@ -2,6 +2,25 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## v26.10.5 - 2026-09-23
+
+### Added
+
+- Added optional VaultUnlocked v2 economy support with UUID accounts, multiple currencies, transfers, exact amount validation, and asynchronous operations.
+- Added regression coverage for Classic Vault and VaultUnlocked v2 interoperability, precision boundaries, transfer tax, rollback, concurrency, and async shutdown.
+- Added a direct GitHub Issue entry button to the project header.
+
+### Changed
+
+- Kept Classic Vault compatibility while routing Classic Vault and VaultUnlocked v2 balance mutations through the shared economy service and audit path.
+- Updated the README, Modrinth project description, and plugin metadata to document the new VaultUnlocked v2 compatibility.
+- Bumped the project version to `26.10.5`.
+
+### Fixed
+
+- Prevented unsafe v2 amounts from reaching double-backed storage.
+- Coordinated VaultUnlocked v2 async operations with plugin shutdown so the database is not closed while work is still running.
+
 ## VaultUnlocked v2 integration - 2026-09-21
 
 ### Added

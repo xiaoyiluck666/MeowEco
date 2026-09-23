@@ -1,6 +1,6 @@
 # MeowEco Economy
 
-[![Modrinth 下载](https://img.shields.io/badge/Modrinth_⬇️-下载-E53935?style=flat&logo=modrinth&logoColor=white)](https://modrinth.com/plugin/meoweco/versions)&nbsp;&nbsp;[![GitHub Wiki 文档](https://img.shields.io/badge/GitHub_📚-Wiki_文档-E53935?style=flat&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco/wiki)&nbsp;&nbsp;[![GitHub 源码](https://img.shields.io/badge/GitHub_💻-源码-E53935?style=flat&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco)
+[![Modrinth 下载](https://img.shields.io/badge/Modrinth_⬇️-下载-E53935?style=flat&logo=modrinth&logoColor=white)](https://modrinth.com/plugin/meoweco/versions)&nbsp;&nbsp;[![GitHub Wiki 文档](https://img.shields.io/badge/GitHub_📚-Wiki_文档-E53935?style=flat&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco/wiki)&nbsp;&nbsp;[![GitHub 源码](https://img.shields.io/badge/GitHub_💻-源码-E53935?style=flat&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco)&nbsp;&nbsp;[![GitHub 提交 Issue](https://img.shields.io/badge/GitHub_📝-提交_Issue-E53935?style=flat&logo=github&logoColor=white)](https://github.com/xiaoyiluck666/MeowEco/issues/new/choose)
 
 **🧊 Measure inflation. Tune policy. Keep every balance change explainable.**
 
@@ -12,7 +12,7 @@ MeowEco is a Paper-first, multi-currency economy for servers that want an econom
 - **⚙️ Adjust the money policy** with per-currency rich tax, transfer tax, exchange rates, and frozen funds for sinks, locked deposits, penalties, and progression gates.
 - **🧾 Verify every result** with transaction-level audit history, before/after balances, actor, source, and shared transaction IDs.
 
-You still get everything a modern server economy needs: 💰 coins, points, gems, tokens, and custom currencies; 🏪 Vault and menu compatibility; 📈 leaderboards; 🔄 safe migration; and 🛡️ SQLite/MySQL storage.
+You still get everything a modern server economy needs: 💰 coins, points, gems, tokens, and custom currencies; 🏪 Classic Vault and VaultUnlocked v2 compatibility; menu integrations; 📈 leaderboards; 🔄 safe migration; and 🛡️ SQLite/MySQL storage.
 
 The project is focused exclusively on the Paper plugin, with a current runtime target of Paper 26.1.x / 26.2 on Java 25.
 
@@ -22,7 +22,7 @@ Chinese server: set `messages.language: "zh_CN"` in `plugins/MeowEco/config.yml`
 
 - Server: Paper 26.1.x / 26.2
 - Java: 25
-- Optional integrations: Vault, PlaceholderAPI, TrMenu via commands/placeholders
+- Optional integrations: Classic Vault, VaultUnlocked v2, PlaceholderAPI, TrMenu via commands/placeholders
 - Storage: SQLite by default, MySQL supported
 
 ## Build
@@ -42,7 +42,7 @@ These commands are for contributors and CI verification. **服务器用户请只
 - 📉 **Controlled sinks and locked funds:** rich tax can remove or redirect balances above a threshold, while transfer tax and frozen funds shape how money enters, moves through, and leaves the economy.
 - 🧾 **Accountability by default:** deposits, withdrawals, payments, exchanges, admin edits, API/Vault writes, taxes, and migrations record who changed what and why.
 - 🪙 Multi-currency accounts with custom names, symbols, precision, starting balances, and transfer tax.
-- 🔌 Vault bridge for the default currency, so existing economy plugins can talk to MeowEco.
+- 🔌 Classic Vault bridge for the default currency, plus an optional VaultUnlocked v2 provider with UUID accounts, multiple currencies, transfers, and async operations.
 - 🧩 PlaceholderAPI placeholders for balances, frozen balances, total balance, and leaderboard-style displays.
 - 🏪 Menu-friendly command flows for shops, VIP pages, exchanges, and reward systems.
 - 🧊 Admin tools for give, take, set, freeze, unfreeze, deduct frozen funds, hide/unhide, reload, and debug.

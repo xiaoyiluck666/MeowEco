@@ -2,7 +2,7 @@
 
 **Move your economy without wiping player balances. Know where every unit of currency went.**
 
-MeowEco is a Paper-first, multi-currency economy for live servers that need more control than a basic balance provider. Create coins, points, gems, or event tokens; migrate from your current economy with a dry run and automatic backup; then investigate every balance change with transaction-level audit history.
+MeowEco is a Paper-first, multi-currency economy for live servers that need more control than a basic balance provider. Create coins, points, gems, or event tokens; migrate from your current economy with a dry run and automatic backup; then investigate every balance change with transaction-level audit history. MeowEco supports both Classic Vault and the optional VaultUnlocked v2 economy interface.
 
 [Download the latest release](https://modrinth.com/plugin/meoweco/versions) | [Read the full guide](https://github.com/xiaoyiluck666/MeowEco/wiki) | [Plan a migration](https://github.com/xiaoyiluck666/MeowEco/wiki/WIKI_EN#migrating-from-another-economy)
 
@@ -23,7 +23,7 @@ MeowEco is a Paper-first, multi-currency economy for live servers that need more
 | Server | Paper 26.1.x and 26.2; compatible Paper forks such as Purpur |
 | Java | Java 25 |
 | Storage | SQLite out of the box; MySQL optional |
-| Integrations | Vault, PlaceholderAPI, TrMenu through commands/placeholders |
+| Integrations | Classic Vault, VaultUnlocked v2, PlaceholderAPI, TrMenu through commands/placeholders |
 | Migration sources | Any Vault economy provider, EssentialsX userdata, standard CSV |
 | Languages | English by default; bundled Simplified Chinese |
 
@@ -35,7 +35,7 @@ No client mod is required. The current download is a server-side Paper plugin.
 2. Edit `plugins/MeowEco/config.yml` to name your currencies. SQLite works immediately; MySQL is optional.
 3. Run `/meco reload`, then verify the setup with `/meco bal` and `/meco debug currencies`.
 
-Vault and PlaceholderAPI are optional. Install them before startup when you want existing shop compatibility or placeholders.
+Classic Vault, VaultUnlocked v2, and PlaceholderAPI are optional. Install the bridge you need before startup when you want existing shop compatibility, UUID/multi-currency economy access, or placeholders.
 
 Chinese server? Set the following value, save the file, and run `/meco reload`:
 

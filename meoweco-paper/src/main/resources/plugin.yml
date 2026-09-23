@@ -1,7 +1,7 @@
 name: MeowEco
 version: '${version}'
 main: com.xiaoyiluck.meoweco.MeowEco
-description: A controllable multi-currency Paper economy with migration, audit, Vault, and SQL storage.
+description: A controllable multi-currency Paper economy with migration, audit, Classic Vault, VaultUnlocked v2, and SQL storage.
 load: STARTUP
 api-version: '26.1'
 authors: [xiaoyiluck]
