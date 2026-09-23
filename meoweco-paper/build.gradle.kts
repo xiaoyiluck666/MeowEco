@@ -26,8 +26,8 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:$paperApiVersion")
     paper261Compatibility("io.papermc.paper:paper-api:$earliestPaper261ApiVersion")
     paper2612Compatibility("io.papermc.paper:paper-api:$paper2612ApiVersion")
-    compileOnly("com.github.MilkBowl:VaultAPI:1.7") {
-        exclude(group = "org.bukkit", module = "bukkit")
+    compileOnly("net.milkbowl.vault:VaultUnlocked:2.20.2") {
+        isTransitive = false
     }
     compileOnly("me.clip:placeholderapi:2.11.6")
 
@@ -41,6 +41,10 @@ dependencies {
     implementation("org.bstats:bstats-bukkit:3.1.0")
 
     testImplementation(project(":meoweco-core"))
+    testCompileOnly("io.papermc.paper:paper-api:$paperApiVersion")
+    testImplementation("net.milkbowl.vault:VaultUnlocked:2.20.2") {
+        isTransitive = false
+    }
     testImplementation("com.zaxxer:HikariCP:5.1.0")
     testRuntimeOnly("org.xerial:sqlite-jdbc:3.46.0.0")
     testRuntimeOnly("org.slf4j:slf4j-nop:2.0.16")
@@ -142,9 +146,20 @@ val migrationRegressionTest by tasks.registering(JavaExec::class) {
     mainClass.set("com.xiaoyiluck.meoweco.migration.MigrationServiceRegressionTest")
 }
 
+val vaultUnlockedV2RegressionTest by tasks.registering(JavaExec::class) {
+    description = "Runs Classic Vault and VaultUnlocked v2 interoperability regression tests."
+    group = "verification"
+
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath + sourceSets["main"].compileClasspath
+    mainClass.set("com.xiaoyiluck.meoweco.api.VaultUnlockedV2RegressionTest")
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+}
+
 tasks.named("test") {
     dependsOn(sqliteRegressionTest)
     dependsOn(migrationRegressionTest)
+    dependsOn(vaultUnlockedV2RegressionTest)
 }
 
 tasks.withType<Test>().configureEach {

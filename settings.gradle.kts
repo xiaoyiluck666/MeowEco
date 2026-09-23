@@ -51,6 +51,11 @@ dependencyResolutionManagement {
                 includeGroupByRegex("com\\.github\\..*")
             }
         }
+        maven("https://repo.codemc.io/repository/maven-public/") {
+            content {
+                includeGroup("net.milkbowl.vault")
+            }
+        }
     }
 }
 

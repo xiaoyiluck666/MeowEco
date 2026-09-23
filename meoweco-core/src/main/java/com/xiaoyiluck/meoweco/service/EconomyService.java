@@ -6,6 +6,8 @@ import com.xiaoyiluck.meoweco.objects.Currency;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +29,21 @@ public class EconomyService {
         for (Currency currency : currencies.values()) {
             ensureAccount(uuid, currency);
         }
+    }
+
+    public boolean createAccount(UUID uuid, String name, Map<String, Currency> currencies) {
+        boolean created = false;
+        boolean success = true;
+        for (Currency currency : currencies.values()) {
+            if (!databaseManager.hasAccount(uuid, currency.getId())) {
+                success &= databaseManager.createAccount(uuid, currency.getId(), currency.getInitialBalance());
+                created = true;
+            }
+        }
+        if (success && name != null && !name.isBlank()) {
+            databaseManager.updatePlayerName(uuid, name);
+        }
+        return created && success;
     }
 
     public BalanceResult getBalance(UUID uuid, Currency currency) {
@@ -67,6 +84,55 @@ public class EconomyService {
 
     public double getTotalBalance(Currency currency) {
         return databaseManager.getTotalBalance(currency.getId());
+    }
+
+    public boolean canDeposit(UUID uuid, Currency currency, double amount) {
+        if (!MoneyAmountPolicy.isValidPositiveInput(amount, currency)) {
+            return false;
+        }
+        BalanceResult current = getBalance(uuid, currency);
+        return current.exists() && canStoreResult(current.balance(), amount, currency);
+    }
+
+    public boolean deposit(UUID uuid, Currency currency, double amount) {
+        return canDeposit(uuid, currency, amount)
+                && databaseManager.deposit(uuid, currency.getId(), MoneyAmountPolicy.roundForStorage(amount, currency));
+    }
+
+    public boolean canWithdraw(UUID uuid, Currency currency, double amount) {
+        if (!MoneyAmountPolicy.isValidPositiveInput(amount, currency)) {
+            return false;
+        }
+        BalanceResult current = getBalance(uuid, currency);
+        double normalized = MoneyAmountPolicy.roundForStorage(amount, currency);
+        return current.exists()
+                && current.balance() - current.frozen() >= normalized
+                && canStoreResult(current.balance(), -normalized, currency);
+    }
+
+    public boolean withdraw(UUID uuid, Currency currency, double amount) {
+        return canWithdraw(uuid, currency, amount)
+                && databaseManager.withdraw(uuid, currency.getId(), MoneyAmountPolicy.roundForStorage(amount, currency));
+    }
+
+    public boolean setBalance(UUID uuid, Currency currency, double amount) {
+        if (!MoneyAmountPolicy.isValidNonNegativeInput(amount, currency)) {
+            return false;
+        }
+        BalanceResult current = getBalance(uuid, currency);
+        double normalized = MoneyAmountPolicy.roundForStorage(amount, currency);
+        return current.exists() && current.frozen() <= normalized
+                && databaseManager.updateBalance(uuid, currency.getId(), normalized);
+    }
+
+    private boolean canStoreResult(double currentBalance, double delta, Currency currency) {
+        if (!Double.isFinite(currentBalance) || !Double.isFinite(delta)) {
+            return false;
+        }
+        int scale = MoneyAmountPolicy.decimalPlaces(currency);
+        BigDecimal current = BigDecimal.valueOf(currentBalance).setScale(scale, RoundingMode.HALF_UP);
+        BigDecimal change = BigDecimal.valueOf(delta).setScale(scale, RoundingMode.HALF_UP);
+        return MoneyAmountPolicy.toExactDouble(current.add(change), currency).isPresent();
     }
 
     public PayResult pay(UUID from, UUID to, Currency currency, double amount) {

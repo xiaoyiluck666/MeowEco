@@ -53,6 +53,14 @@ public interface DatabaseManager {
         return Optional.empty();
     }
 
+    default Optional<String> findUsernameByUuid(UUID uuid) {
+        return Optional.ofNullable(getAccountNames().get(uuid));
+    }
+
+    default Map<UUID, String> getAccountNames() {
+        return Map.of();
+    }
+
     Map<String, Double> getTopAccounts(String currency, int limit);
     Map<UUID, Double> getAccountsAboveBalance(String currency, double minimumBalance);
     double getTotalBalance(String currency);

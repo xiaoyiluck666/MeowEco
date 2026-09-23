@@ -391,6 +391,27 @@ public class JdbcDatabaseManager implements DatabaseManager {
     }
 
     @Override
+    public Map<UUID, String> getAccountNames() {
+        Map<UUID, String> accounts = new LinkedHashMap<>();
+        String sql = "SELECT uuid, MAX(username) AS username FROM " + TABLE_NAME + " GROUP BY uuid";
+        try (Connection connection = getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                try {
+                    UUID uuid = UUID.fromString(resultSet.getString("uuid"));
+                    String username = resultSet.getString("username");
+                    accounts.put(uuid, username == null || username.isBlank() ? "Unknown" : username);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        } catch (SQLException e) {
+            logSqlError("Failed to query account names", e);
+        }
+        return accounts;
+    }
+
+    @Override
     public Map<String, Double> getTopAccounts(String currency, int limit) {
         String sql = "SELECT username, uuid, balance FROM " + TABLE_NAME + " WHERE currency = ? AND hidden = 0 AND LOWER(username) <> 'tax' ORDER BY balance DESC LIMIT ?";
         Map<String, Double> topAccounts = new LinkedHashMap<>();

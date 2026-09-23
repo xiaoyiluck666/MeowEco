@@ -2,6 +2,24 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## VaultUnlocked v2 integration - 2026-09-21
+
+### Added
+
+- Added a VaultUnlocked v2 economy provider with UUID accounts, multi-currency operations, exact `BigDecimal` validation, transfers, and asynchronous access.
+- Added Classic/v2 interoperability regressions covering names, multiple currencies, precision boundaries, progressive transfer tax, rollback, async execution, audit metadata, and concurrent mutations.
+
+### Changed
+
+- Compiled against VaultUnlocked `2.20.2` as the single provided Vault API while retaining Classic Vault runtime compatibility.
+- Routed Classic Vault and VaultUnlocked v2 deposits and withdrawals through the shared economy service.
+- Registered both available Vault service generations at enable time and unregistered plugin-owned services before database shutdown.
+
+### Fixed
+
+- Prevented v2 amounts outside the configured currency scale or current exact-double safe range from reaching storage.
+- Kept v2 transfers on the current atomic database path and marginal progressive transfer-tax policy.
+
 ## v26.10.4 - 2026-09-21
 
 ### Added
