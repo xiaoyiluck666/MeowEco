@@ -31,7 +31,7 @@ const supportedGameVersions = readListEnv('MODRINTH_GAME_VERSIONS', '26.1,26.1.1
 const changelog = fs.readFileSync(changelogPath, 'utf8');
 
 function readProjectBody() {
-  return fs.readFileSync(path.resolve('docs/marketplace/MODRINTH.md'), 'utf8')
+  return fs.readFileSync(path.resolve('README.md'), 'utf8')
     .replace(/\r\n/g, '\n')
     .trim();
 }
@@ -118,7 +118,7 @@ async function updateProject(token) {
     headers: authHeaders(token, 'application/json'),
     body: JSON.stringify({
       title: 'MeowEco Economy',
-      description: 'Multi-currency Paper economy with no-reset Vault/EssentialsX/CSV migration, transaction audit, inflation controls, Classic Vault, optional VaultUnlocked v2, SQLite, and MySQL.',
+      description: 'Policy-first Paper 26.1-26.3 economy: measure supply, tune progressive anti-inflation controls, and audit every change. Multi-currency, Classic Vault, and optional VaultUnlocked v2.',
       body: projectBody,
       source_url: 'https://github.com/xiaoyiluck666/MeowEco',
       issues_url: 'https://github.com/xiaoyiluck666/MeowEco/issues',

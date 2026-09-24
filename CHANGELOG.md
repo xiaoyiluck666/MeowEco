@@ -12,6 +12,7 @@ This file now serves as the running changelog for MeowEco.
 
 - Updated runtime documentation, the future Modrinth project description, and publishing metadata to list Paper 26.3 support while retaining Paper 26.1.x and 26.2 compatibility.
 - Bumped the project version to `26.10.6`.
+- Restored the policy-first Modrinth project description and made `README.md` its single source so future releases cannot overwrite it with stale marketplace copy.
 
 ### Fixed
 
