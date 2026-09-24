@@ -26,6 +26,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+@SuppressWarnings("deprecation") // Reads balances through the Classic Vault migration API.
 public final class MigrationService {
     private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     private final MeowEco plugin;

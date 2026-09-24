@@ -18,6 +18,7 @@ This release adds optional VaultUnlocked v2 support while preserving the existin
 
 - Rejected v2 amounts that cannot be represented at the configured currency precision or by the existing double-backed storage.
 - Coordinated asynchronous v2 operations with plugin shutdown and deferred database close when a running operation needs more time to finish.
+- Scoped intentional Classic Vault deprecation handling to compatibility code, explicitly marked legacy VaultUnlocked overrides as deprecated, and removed unused audit-scope resource warnings.
 
 ## Compatibility
 

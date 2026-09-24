@@ -90,10 +90,7 @@ public class MeowEco extends JavaPlugin {
 
         // Register Vault Economy
         if (getServer().getPluginManager().getPlugin("Vault") != null) {
-            meowEconomy = new MeowEconomy(this);
-            getServer().getServicesManager().register(Economy.class, meowEconomy, this, ServicePriority.Highest);
-            getLogger().info("Registered Classic Vault economy provider.");
-            registerVaultUnlockedProvider();
+            registerClassicVaultProvider();
         } else {
             getLogger().warning("Vault not found! Economy features might not work with other plugins.");
         }
@@ -502,6 +499,14 @@ public class MeowEco extends JavaPlugin {
 
     public Object getVaultUnlockedEconomy() {
         return vaultUnlockedEconomy;
+    }
+
+    @SuppressWarnings("deprecation") // Registers the Classic Vault compatibility service.
+    private void registerClassicVaultProvider() {
+        meowEconomy = new MeowEconomy(this);
+        getServer().getServicesManager().register(Economy.class, meowEconomy, this, ServicePriority.Highest);
+        getLogger().info("Registered Classic Vault economy provider.");
+        registerVaultUnlockedProvider();
     }
 
     private VaultAsyncOperationManager.ShutdownResult stopVaultAsyncOperations() {

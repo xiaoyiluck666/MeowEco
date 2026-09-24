@@ -24,7 +24,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
 
-@SuppressWarnings("deprecation")
 public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy {
     private static final String PROVIDER_NAME = "MeowEco";
     private static final String AUDIT_SOURCE = "vault";
@@ -98,6 +97,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
     }
 
     @Override
+    @Deprecated
     public String format(BigDecimal amount) {
         return format("unknown", amount);
     }
@@ -108,6 +108,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
     }
 
     @Override
+    @Deprecated
     public String format(BigDecimal amount, String currency) {
         return format("unknown", amount, currency);
     }
@@ -149,6 +150,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
     }
 
     @Override
+    @Deprecated
     public boolean createAccount(UUID accountID, String name) {
         return createAccount(accountID, name, true);
     }
@@ -158,12 +160,13 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
         if (!isEnabled() || accountID == null) {
             return false;
         }
-        try (AuditScope ignored = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (AuditScope _ = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             return context.economyService().createAccount(accountID, name, context.currencies());
         }
     }
 
     @Override
+    @Deprecated
     public boolean createAccount(UUID accountID, String name, String worldName) {
         return createAccount(accountID, name, worldName, true);
     }
@@ -225,16 +228,19 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
     }
 
     @Override
+    @Deprecated
     public BigDecimal getBalance(String pluginName, UUID accountID) {
         return balanceFor(accountID, context.defaultCurrency());
     }
 
     @Override
+    @Deprecated
     public BigDecimal getBalance(String pluginName, UUID accountID, String worldName) {
         return getBalance(pluginName, accountID);
     }
 
     @Override
+    @Deprecated
     public BigDecimal getBalance(String pluginName, UUID accountID, String worldName, String currency) {
         Currency resolved = resolveCurrency(currency);
         return resolved == null ? BigDecimal.ZERO : balanceFor(accountID, resolved);
@@ -417,7 +423,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
             return failure(accountID, currency, "Amount cannot be represented at currency precision");
         }
         boolean success;
-        try (AuditScope ignored = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (AuditScope _ = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             success = context.economyService().setBalance(accountID, currency, converted.getAsDouble());
         }
         context.invalidate(accountID, currency.getId());
@@ -439,7 +445,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
             return failure(accountID, currency, "Amount cannot be represented at currency precision");
         }
         boolean success;
-        try (AuditScope ignored = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (AuditScope _ = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             success = context.economyService().withdraw(accountID, currency, converted.getAsDouble());
         }
         context.invalidate(accountID, currency.getId());
@@ -461,7 +467,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
             return failure(accountID, currency, "Amount cannot be represented at currency precision");
         }
         boolean success;
-        try (AuditScope ignored = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (AuditScope _ = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             success = context.economyService().deposit(accountID, currency, converted.getAsDouble());
         }
         context.invalidate(accountID, currency.getId());
@@ -475,7 +481,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
             return multiFailure(BigDecimal.ZERO, "Invalid or unsafe transfer");
         }
         EconomyService.PayResult result;
-        try (AuditScope ignored = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (AuditScope _ = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             result = context.economyService().pay(from, to, currency, converted.getAsDouble());
         }
         context.invalidate(from, currency.getId());

@@ -20,6 +20,7 @@ This file now serves as the running changelog for MeowEco.
 
 - Prevented unsafe v2 amounts from reaching double-backed storage.
 - Coordinated VaultUnlocked v2 async operations with plugin shutdown so the database is not closed while work is still running.
+- Scoped intentional Classic Vault deprecation handling to compatibility code, explicitly marked legacy VaultUnlocked overrides as deprecated, and removed unused audit-scope resource warnings.
 
 ## VaultUnlocked v2 integration - 2026-09-21
 
