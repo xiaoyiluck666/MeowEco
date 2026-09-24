@@ -2,6 +2,21 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## v26.10.6 - 2026-09-24
+
+### Added
+
+- Added Paper 26.3 build 38 as the primary compile target and a dedicated Paper 26.2 stable compatibility compile gate.
+
+### Changed
+
+- Updated runtime documentation, the future Modrinth project description, and publishing metadata to list Paper 26.3 support while retaining Paper 26.1.x and 26.2 compatibility.
+- Bumped the project version to `26.10.6`.
+
+### Fixed
+
+- Prevented future Paper 26.3 API updates from silently dropping Paper 26.2 compatibility by compiling the full Paper source set against both API lines during `check`.
+
 ## v26.10.5 - 2026-09-23
 
 ### Added

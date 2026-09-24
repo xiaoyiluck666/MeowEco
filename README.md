@@ -14,13 +14,13 @@ MeowEco is a Paper-first, multi-currency economy for servers that want an econom
 
 You still get everything a modern server economy needs: 💰 coins, points, gems, tokens, and custom currencies; 🏪 Classic Vault and VaultUnlocked v2 compatibility; menu integrations; 📈 leaderboards; 🔄 safe migration; and 🛡️ SQLite/MySQL storage.
 
-The project is focused exclusively on the Paper plugin, with a current runtime target of Paper 26.1.x / 26.2 on Java 25.
+The project is focused exclusively on the Paper plugin, with a current runtime target of Paper 26.1.x / 26.2 / 26.3 on Java 25.
 
 Chinese server: set `messages.language: "zh_CN"` in `plugins/MeowEco/config.yml`, then run `/meco reload`.
 
 ## Runtime
 
-- Server: Paper 26.1.x / 26.2
+- Server: Paper 26.1.x / 26.2 / 26.3
 - Java: 25
 - Optional integrations: Classic Vault, VaultUnlocked v2, PlaceholderAPI, TrMenu via commands/placeholders
 - Storage: SQLite by default, MySQL supported
@@ -77,7 +77,8 @@ MeowEco does not promise fixed prices or automatic protection from every inflati
 | --- | --- | --- |
 | Paper 26.1.1 | 25 | Compile-tested |
 | Paper 26.1.2 | 25 | Compile-tested |
-| Paper 26.2 | 25 | Primary build target |
+| Paper 26.2 | 25 | Compatibility compile-tested |
+| Paper 26.3 | 25 | Primary build target |
 | Purpur based on the supported Paper lines | 25 | Expected compatible |
 
 ## Commands

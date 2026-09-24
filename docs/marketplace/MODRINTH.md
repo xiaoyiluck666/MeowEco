@@ -20,7 +20,7 @@ MeowEco is a Paper-first, multi-currency economy for live servers that need more
 
 | Component | Supported |
 | --- | --- |
-| Server | Paper 26.1.x and 26.2; compatible Paper forks such as Purpur |
+| Server | Paper 26.1.x, 26.2, and 26.3; compatible Paper forks such as Purpur |
 | Java | Java 25 |
 | Storage | SQLite out of the box; MySQL optional |
 | Integrations | Classic Vault, VaultUnlocked v2, PlaceholderAPI, TrMenu through commands/placeholders |

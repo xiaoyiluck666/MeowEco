@@ -26,7 +26,7 @@ function readListEnv(name, fallback) {
 const versionNumber = process.env.MEOWECO_VERSION?.trim() || readProjectVersion();
 const jarPath = path.resolve(process.env.MEOWECO_JAR ?? `meoweco-paper/build/libs/meoweco-paper-${versionNumber}.jar`);
 const changelogPath = path.resolve(process.env.MEOWECO_CHANGELOG ?? `docs/release/CHANGELOG_${versionNumber}_EN.md`);
-const supportedGameVersions = readListEnv('MODRINTH_GAME_VERSIONS', '26.1,26.1.1,26.1.2,26.2');
+const supportedGameVersions = readListEnv('MODRINTH_GAME_VERSIONS', '26.1,26.1.1,26.1.2,26.2,26.3');
 
 const changelog = fs.readFileSync(changelogPath, 'utf8');
 
