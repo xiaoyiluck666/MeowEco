@@ -47,12 +47,9 @@ public class EconomyService {
     }
 
     public BalanceResult getBalance(UUID uuid, Currency currency) {
-        if (!databaseManager.hasAccount(uuid, currency.getId())) {
-            return BalanceResult.missing();
-        }
-        double balance = databaseManager.findBalance(uuid, currency.getId()).orElse(0.0D);
-        double frozen = databaseManager.findFrozenBalance(uuid, currency.getId()).orElse(0.0D);
-        return new BalanceResult(true, balance, frozen);
+        return databaseManager.findAccountBalance(uuid, currency.getId())
+                .map(balance -> new BalanceResult(true, balance.balance(), balance.frozenBalance()))
+                .orElseGet(BalanceResult::missing);
     }
 
     public TopResult getTopPage(Currency currency, int page, int pageSize) {

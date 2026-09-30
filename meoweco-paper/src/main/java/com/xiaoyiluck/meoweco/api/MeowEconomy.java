@@ -1,6 +1,7 @@
 package com.xiaoyiluck.meoweco.api;
 
 import com.xiaoyiluck.meoweco.MeowEco;
+import com.xiaoyiluck.meoweco.database.AccountBalance;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.MoneyAmountPolicy;
 import com.xiaoyiluck.meoweco.utils.PlayerLookup;
@@ -11,13 +12,9 @@ import org.bukkit.OfflinePlayer;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @SuppressWarnings("deprecation") // Implements the Classic Vault compatibility interface.
 public class MeowEconomy implements Economy {
-    private static final long VAULT_BALANCE_CACHE_TTL_MS = 500L;
-    private final ConcurrentHashMap<String, VaultBalanceSnapshot> defaultCurrencyBalanceCache = new ConcurrentHashMap<>();
-
     // We don't store the plugin instance anymore to support hot reloading
     // Instead we use the static instance from MeowEco
     
@@ -53,35 +50,9 @@ public class MeowEconomy implements Economy {
         return resolveDefaultCurrency(plugin).getId();
     }
 
-    private double getStoredBalance(MeowEco plugin, UUID uuid, String currencyId) {
-        return plugin.getDatabaseManager().findBalance(uuid, currencyId).orElse(0.0D);
-    }
-
-    private double getStoredFrozenBalance(MeowEco plugin, UUID uuid, String currencyId) {
-        return plugin.getDatabaseManager().findFrozenBalance(uuid, currencyId).orElse(0.0D);
-    }
-
-    private VaultBalanceSnapshot getDefaultCurrencyBalanceSnapshot(MeowEco plugin, UUID uuid, String currencyId) {
-        long now = System.currentTimeMillis();
-        String cacheKey = uuid + ":" + currencyId;
-        VaultBalanceSnapshot cached = defaultCurrencyBalanceCache.get(cacheKey);
-        if (cached != null && now - cached.timestampMs <= VAULT_BALANCE_CACHE_TTL_MS) {
-            return cached;
-        }
-
-        VaultBalanceSnapshot fresh = new VaultBalanceSnapshot(
-                getStoredBalance(plugin, uuid, currencyId),
-                getStoredFrozenBalance(plugin, uuid, currencyId),
-                now
-        );
-        defaultCurrencyBalanceCache.put(cacheKey, fresh);
-        return fresh;
-    }
-
-    private void invalidateDefaultCurrencyBalance(UUID uuid, String currencyId) {
-        if (uuid != null && currencyId != null) {
-            defaultCurrencyBalanceCache.remove(uuid + ":" + currencyId);
-        }
+    private AccountBalance getDefaultCurrencyBalanceSnapshot(MeowEco plugin, UUID uuid, String currencyId) {
+        return plugin.getDatabaseManager().findAccountBalance(uuid, currencyId)
+                .orElseGet(() -> new AccountBalance(0.0D, 0.0D));
     }
 
     private OfflinePlayer resolveOfflinePlayer(MeowEco plugin, String playerName) {
@@ -96,18 +67,15 @@ public class MeowEconomy implements Economy {
     }
 
     public void invalidateCache(UUID uuid, String currencyId) {
-        invalidateDefaultCurrencyBalance(uuid, currencyId);
+        // Retained for compatibility; Vault balance reads no longer use a local cache.
     }
 
     public void invalidateCache(UUID uuid) {
-        if (uuid != null) {
-            String cacheKeyPrefix = uuid + ":";
-            defaultCurrencyBalanceCache.keySet().removeIf(key -> key.startsWith(cacheKeyPrefix));
-        }
+        // Retained for compatibility; Vault balance reads no longer use a local cache.
     }
 
     public void invalidateAllCache() {
-        defaultCurrencyBalanceCache.clear();
+        // Retained for compatibility; Vault balance reads no longer use a local cache.
     }
 
     @Override
@@ -169,8 +137,8 @@ public class MeowEconomy implements Economy {
         Currency currency = resolveDefaultCurrency(plugin);
         if (!MoneyAmountPolicy.isValidNonNegativeInput(amount, currency)) return false;
         String currencyId = resolveDefaultCurrencyId(plugin);
-        VaultBalanceSnapshot snapshot = getDefaultCurrencyBalanceSnapshot(plugin, player.getUniqueId(), currencyId);
-        return snapshot.available() >= amount;
+        AccountBalance snapshot = getDefaultCurrencyBalanceSnapshot(plugin, player.getUniqueId(), currencyId);
+        return snapshot.availableBalance() >= amount;
     }
 
     @Override
@@ -219,7 +187,7 @@ public class MeowEconomy implements Economy {
         if (!isEnabled()) return 0.0;
         MeowEco plugin = getPlugin();
         String currencyId = resolveDefaultCurrencyId(plugin);
-        return getDefaultCurrencyBalanceSnapshot(plugin, player.getUniqueId(), currencyId).balance;
+        return getDefaultCurrencyBalanceSnapshot(plugin, player.getUniqueId(), currencyId).balance();
     }
 
     @Override
@@ -248,7 +216,6 @@ public class MeowEconomy implements Economy {
         try (var _ = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
             success = plugin.getDatabaseManager().createAccount(player.getUniqueId(), def.getId(), def.getInitialBalance());
         }
-        invalidateDefaultCurrencyBalance(player.getUniqueId(), def.getId());
         return success;
     }
 
@@ -377,12 +344,7 @@ public class MeowEconomy implements Economy {
 
     private VaultEconomyOperations operations(MeowEco plugin) {
         return new VaultEconomyOperations(plugin.getDatabaseManager(), plugin.getEconomyService(),
-                resolveDefaultCurrency(plugin), this::invalidateDefaultCurrencyBalance);
+                resolveDefaultCurrency(plugin));
     }
 
-    private record VaultBalanceSnapshot(double balance, double frozen, long timestampMs) {
-        private double available() {
-            return balance - frozen;
-        }
-    }
 }

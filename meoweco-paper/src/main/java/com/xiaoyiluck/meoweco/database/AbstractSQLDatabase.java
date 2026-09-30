@@ -490,6 +490,26 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     @Override
+    public Optional<AccountBalance> findAccountBalance(UUID uuid, String currency) {
+        String sql = "SELECT balance, frozen_balance FROM " + getTableName() + " WHERE uuid = ? AND currency = ?";
+        try (Connection conn = getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, uuid.toString());
+            ps.setString(2, currency);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(new AccountBalance(
+                            rs.getDouble(COLUMN_BALANCE),
+                            rs.getDouble(COLUMN_FROZEN_BALANCE)));
+                }
+            }
+        } catch (SQLException e) {
+            logSqlError("Account balance query failed", e);
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public OptionalDouble findBalance(UUID uuid, String currency) {
         return findNumericColumn(uuid, currency, COLUMN_BALANCE);
     }
@@ -553,8 +573,10 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             conn.setAutoCommit(false);
             try (PreparedStatement psWithdraw = conn.prepareStatement(withdrawSql);
                  PreparedStatement psDeposit = conn.prepareStatement(depositSql)) {
-                AccountSnapshot fromBefore = readAccountSnapshot(conn, from, currency);
-                AccountSnapshot toBefore = readAccountSnapshot(conn, to, currency);
+                AccountSnapshotPair locked = readAccountSnapshotsForUpdate(
+                        conn, from, currency, to, currency);
+                AccountSnapshot fromBefore = locked.first();
+                AccountSnapshot toBefore = locked.second();
                 if (fromBefore == null || toBefore == null) {
                     conn.rollback();
                     return false;
@@ -625,8 +647,10 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             conn.setAutoCommit(false);
             try (PreparedStatement psWithdraw = conn.prepareStatement(withdrawSql);
                  PreparedStatement psDeposit = conn.prepareStatement(depositSql)) {
-                AccountSnapshot fromBefore = readAccountSnapshot(conn, uuid, fromCurrency);
-                AccountSnapshot toBefore = readAccountSnapshot(conn, uuid, toCurrency);
+                AccountSnapshotPair locked = readAccountSnapshotsForUpdate(
+                        conn, uuid, fromCurrency, uuid, toCurrency);
+                AccountSnapshot fromBefore = locked.first();
+                AccountSnapshot toBefore = locked.second();
                 if (fromBefore == null || toBefore == null) {
                     conn.rollback();
                     return false;
@@ -1089,7 +1113,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             boolean originalAutoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                AccountSnapshot before = readAccountSnapshot(conn, uuid, currency);
+                AccountSnapshot before = readAccountSnapshotForUpdate(conn, uuid, currency);
                 if (before == null) {
                     conn.rollback();
                     return false;
@@ -1260,8 +1284,18 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     private AccountSnapshot readAccountSnapshot(Connection conn, UUID uuid, String currency) throws SQLException {
+        return readAccountSnapshot(conn, uuid, currency, false);
+    }
+
+    private AccountSnapshot readAccountSnapshotForUpdate(Connection conn, UUID uuid, String currency) throws SQLException {
+        return readAccountSnapshot(conn, uuid, currency, !isSQLite());
+    }
+
+    private AccountSnapshot readAccountSnapshot(Connection conn, UUID uuid, String currency,
+                                                boolean forUpdate) throws SQLException {
         String sql = "SELECT username, balance, frozen_balance FROM " + getTableName()
-                + " WHERE uuid = ? AND currency = ?";
+                + " WHERE uuid = ? AND currency = ?"
+                + (forUpdate ? " FOR UPDATE" : "");
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             ps.setString(2, currency);
@@ -1273,6 +1307,30 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                         rs.getDouble(COLUMN_BALANCE), rs.getDouble(COLUMN_FROZEN_BALANCE));
             }
         }
+    }
+
+    private AccountSnapshotPair readAccountSnapshotsForUpdate(Connection conn,
+                                                              UUID firstUuid,
+                                                              String firstCurrency,
+                                                              UUID secondUuid,
+                                                              String secondCurrency) throws SQLException {
+        AccountReference first = new AccountReference(firstUuid, firstCurrency);
+        AccountReference second = new AccountReference(secondUuid, secondCurrency);
+        if (first.equals(second)) {
+            AccountSnapshot snapshot = readAccountSnapshotForUpdate(conn, firstUuid, firstCurrency);
+            return new AccountSnapshotPair(snapshot, snapshot);
+        }
+
+        boolean firstLocksFirst = first.lockKey().compareTo(second.lockKey()) <= 0;
+        AccountReference earlier = firstLocksFirst ? first : second;
+        AccountReference later = firstLocksFirst ? second : first;
+        AccountSnapshot earlierSnapshot = readAccountSnapshotForUpdate(
+                conn, earlier.uuid(), earlier.currency());
+        AccountSnapshot laterSnapshot = readAccountSnapshotForUpdate(
+                conn, later.uuid(), later.currency());
+        return firstLocksFirst
+                ? new AccountSnapshotPair(earlierSnapshot, laterSnapshot)
+                : new AccountSnapshotPair(laterSnapshot, earlierSnapshot);
     }
 
     private void insertAudit(Connection conn, String transactionId, UUID uuid, String currency, String operation,
@@ -1371,6 +1429,15 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     private record AccountSnapshot(String username, double balance, double frozen) {
+    }
+
+    private record AccountReference(UUID uuid, String currency) {
+        private String lockKey() {
+            return uuid + ":" + currency;
+        }
+    }
+
+    private record AccountSnapshotPair(AccountSnapshot first, AccountSnapshot second) {
     }
 
     private record AuditContext(String source, String actor) {

@@ -23,7 +23,7 @@ Chinese server: set `messages.language: "zh_CN"` in `plugins/MeowEco/config.yml`
 - Server: Paper 26.1.x / 26.2 / 26.3
 - Java: 25
 - Optional integrations: Classic Vault, VaultUnlocked v2, PlaceholderAPI, TrMenu via commands/placeholders
-- Storage: SQLite by default, MySQL supported
+- Storage: SQLite by default; MySQL supports multiple Paper instances sharing one database
 
 ## Build
 
@@ -46,7 +46,7 @@ These commands are for contributors and CI verification. **服务器用户请只
 - 🧩 PlaceholderAPI placeholders for balances, frozen balances, total balance, and leaderboard-style displays.
 - 🏪 Menu-friendly command flows for shops, VIP pages, exchanges, and reward systems.
 - 🧊 Admin tools for give, take, set, freeze, unfreeze, deduct frozen funds, hide/unhide, reload, and debug.
-- 📊 SQLite and MySQL storage with indexed balance queries for leaderboard and tax workflows.
+- 📊 SQLite and MySQL storage with indexed balance queries for leaderboard and tax workflows, including consistent balances across multiple Paper instances sharing MySQL.
 - ⚖️ Progressive rich-tax and transfer-tax tiers per currency, applying marginal rates to slow runaway inflation without manual spreadsheet work.
 - 🔄 Dry-run migration from live Vault providers, EssentialsX userdata, or CSV with automatic pre-import backups.
 - 🧾 Transaction audit history for commands, transfers, exchanges, Vault/API writes, tax cycles, and migrations.

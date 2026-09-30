@@ -63,7 +63,7 @@ public final class VaultUnlockedV2RegressionTest {
             EconomyService service = new EconomyService(database);
             TestContext context = new TestContext(database, service);
             MeowEconomyV2 modern = new MeowEconomyV2(context, executor);
-            VaultEconomyOperations classic = new VaultEconomyOperations(database, service, COINS, (uuid, currency) -> { });
+            VaultEconomyOperations classic = new VaultEconomyOperations(database, service, COINS);
 
             providerRegistrationAndLifecycle(modern);
             crossApiOperationsShareOneBalance(database, modern, classic, context);

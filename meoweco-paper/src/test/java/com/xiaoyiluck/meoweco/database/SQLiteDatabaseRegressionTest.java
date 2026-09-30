@@ -10,6 +10,10 @@ import java.sql.PreparedStatement;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -35,6 +39,7 @@ public final class SQLiteDatabaseRegressionTest {
             transferAuditUsesOneTransactionId(database);
             migrationImportsNewAndExistingAccountsAtomically(database);
             invalidMigrationDoesNotChangeBalances(database);
+            independentInstancesObserveCommittedBalanceSnapshots(database);
         } finally {
             database.close();
             deleteRecursively(tempDir);
@@ -251,6 +256,65 @@ public final class SQLiteDatabaseRegressionTest {
 
         assertFalse(result.success());
         assertDouble(12.0D, database.getBalance(existing, "invalid-migration"));
+    }
+
+    private static void independentInstancesObserveCommittedBalanceSnapshots(TestSQLiteDatabase first) throws Exception {
+        TestSQLiteDatabase second = new TestSQLiteDatabase(first.databasePath);
+        try {
+            second.init();
+            UUID player = UUID.randomUUID();
+            first.setOfflineName(player, "Shared");
+            assertTrue(first.createAccount(player, "shared", 100.0D));
+
+            AccountBalance initial = second.findAccountBalance(player, "shared").orElseThrow();
+            assertDouble(100.0D, initial.balance());
+            assertDouble(0.0D, initial.frozenBalance());
+
+            assertTrue(first.freeze(player, "shared", 30.0D));
+            assertTrue(first.deposit(player, "shared", 25.0D));
+            AccountBalance afterFirstWrite = second.findAccountBalance(player, "shared").orElseThrow();
+            assertDouble(125.0D, afterFirstWrite.balance());
+            assertDouble(30.0D, afterFirstWrite.frozenBalance());
+            assertDouble(95.0D, afterFirstWrite.availableBalance());
+
+            assertTrue(second.withdraw(player, "shared", 20.0D));
+            AccountBalance afterSecondWrite = first.findAccountBalance(player, "shared").orElseThrow();
+            assertDouble(105.0D, afterSecondWrite.balance());
+            assertDouble(30.0D, afterSecondWrite.frozenBalance());
+
+            assertTrue(first.unfreeze(player, "shared", 30.0D));
+            assertTrue(first.updateBalance(player, "shared", 100.0D));
+            assertConcurrentWithdrawPreventsDuplicateSpending(first, second, player);
+        } finally {
+            second.close();
+        }
+    }
+
+    private static void assertConcurrentWithdrawPreventsDuplicateSpending(
+            TestSQLiteDatabase first, TestSQLiteDatabase second, UUID player) throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<Boolean> firstWithdraw = executor.submit(() -> withdrawWhenReleased(first, player, ready, start));
+            Future<Boolean> secondWithdraw = executor.submit(() -> withdrawWhenReleased(second, player, ready, start));
+            ready.await();
+            start.countDown();
+
+            int successes = (firstWithdraw.get() ? 1 : 0) + (secondWithdraw.get() ? 1 : 0);
+            assertInt(1, successes);
+            assertDouble(20.0D, first.findAccountBalance(player, "shared").orElseThrow().balance());
+            assertDouble(20.0D, second.findAccountBalance(player, "shared").orElseThrow().balance());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static boolean withdrawWhenReleased(
+            TestSQLiteDatabase database, UUID player, CountDownLatch ready, CountDownLatch start) throws InterruptedException {
+        ready.countDown();
+        start.await();
+        return database.withdraw(player, "shared", 80.0D);
     }
 
     private static void deleteRecursively(Path path) throws Exception {

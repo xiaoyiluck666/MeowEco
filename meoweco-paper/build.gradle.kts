@@ -184,6 +184,15 @@ val vaultUnlockedV2RegressionTest by tasks.registering(JavaExec::class) {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
+val mysqlMultiInstanceRegressionTest by tasks.registering(JavaExec::class) {
+    description = "Runs shared-MySQL multi-instance balance consistency regression tests."
+    group = "verification"
+
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.xiaoyiluck.meoweco.database.MySQLMultiInstanceRegressionTest")
+}
+
 tasks.named("test") {
     dependsOn(sqliteRegressionTest)
     dependsOn(migrationRegressionTest)

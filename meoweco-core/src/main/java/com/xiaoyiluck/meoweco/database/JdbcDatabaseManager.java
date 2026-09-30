@@ -143,6 +143,25 @@ public class JdbcDatabaseManager implements DatabaseManager {
     }
 
     @Override
+    public Optional<AccountBalance> findAccountBalance(UUID uuid, String currency) {
+        String sql = "SELECT balance, frozen_balance FROM " + TABLE_NAME + " WHERE uuid = ? AND currency = ?";
+        try (Connection connection = getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, currency.toLowerCase());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return Optional.of(new AccountBalance(
+                            resultSet.getDouble("balance"),
+                            resultSet.getDouble("frozen_balance")));
+                }
+            }
+        } catch (SQLException e) {
+            logSqlError("Failed to query account balance", e);
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public OptionalDouble findBalance(UUID uuid, String currency) {
         String sql = "SELECT balance FROM " + TABLE_NAME + " WHERE uuid = ? AND currency = ?";
         try (Connection connection = getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {

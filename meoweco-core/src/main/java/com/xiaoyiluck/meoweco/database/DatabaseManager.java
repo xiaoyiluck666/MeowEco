@@ -13,6 +13,18 @@ public interface DatabaseManager {
     boolean hasAccount(UUID uuid, String currency);
     boolean createAccount(UUID uuid, String currency, double initialBalance);
 
+    default Optional<AccountBalance> findAccountBalance(UUID uuid, String currency) {
+        if (!hasAccount(uuid, currency)) {
+            return Optional.empty();
+        }
+        OptionalDouble balance = findBalance(uuid, currency);
+        OptionalDouble frozenBalance = findFrozenBalance(uuid, currency);
+        if (balance.isEmpty() || frozenBalance.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new AccountBalance(balance.getAsDouble(), frozenBalance.getAsDouble()));
+    }
+
     default OptionalDouble findBalance(UUID uuid, String currency) {
         return OptionalDouble.of(getBalance(uuid, currency));
     }

@@ -2,6 +2,23 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## v26.10.7 - 2026-09-30
+
+### Added
+
+- Added atomic account-balance snapshots plus SQLite and real-MySQL regression coverage for visibility, concurrent withdrawals, concurrent deposits, and opposing transfers across two independent instances sharing one database.
+
+### Changed
+
+- Classic Vault and the core economy service now read balance and frozen funds together from the shared database.
+- Documented support for multiple Paper instances sharing one MySQL database.
+- Bumped the project version to `26.10.7`.
+
+### Fixed
+
+- Removed the process-local Vault balance cache so one server instance immediately observes committed balance changes from another instance.
+- Serialized account mutation audit snapshots with database row locks and deterministic multi-account lock ordering, preventing valid concurrent MySQL deposits from rolling back and opposing transfers from deadlocking.
+
 ## v26.10.6 - 2026-09-24
 
 ### Added
