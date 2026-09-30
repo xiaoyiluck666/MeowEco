@@ -28,6 +28,9 @@ const jarPath = path.resolve(process.env.MEOWECO_JAR ?? `meoweco-paper/build/lib
 const changelogPath = path.resolve(process.env.MEOWECO_CHANGELOG ?? `docs/release/CHANGELOG_${versionNumber}_EN.md`);
 const supportedGameVersions = readListEnv('MODRINTH_GAME_VERSIONS', '1.21.11');
 const isLegacyBuild = versionNumber.includes('-mc1.21.11');
+const versionDisplayName = isLegacyBuild
+  ? `MeowEco ${versionNumber.split('-', 1)[0]} - Paper 1.21.11 LTS`
+  : `MeowEco ${versionNumber}`;
 
 const changelog = fs.readFileSync(changelogPath, 'utf8');
 
@@ -90,7 +93,7 @@ async function versionExists() {
 async function createVersion(token) {
   const form = new FormData();
   form.append('data', JSON.stringify({
-    name: `MeowEco ${versionNumber}`,
+    name: versionDisplayName,
     version_number: versionNumber,
     changelog,
     dependencies: [],

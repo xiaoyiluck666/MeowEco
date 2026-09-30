@@ -1,4 +1,4 @@
-# MeowEco Economy 26.10.7-mc1.21.11
+# MeowEco Economy 26.10.7.1-mc1.21.11
 
 This LTS compatibility release brings the current MeowEco transaction ledger, audit commands, and policy analytics to Paper 1.21.11 without changing the Java 25 baseline of the modern main line.
 

@@ -2,18 +2,21 @@
 
 This file now serves as the running changelog for MeowEco.
 
-## Unreleased - 26.10.7-mc1.21.11 - 2026-09-30
+## v26.10.7.1-mc1.21.11 - 2026-09-30
 
 ### Added
 
 - Added a dedicated `legacy/1.21.x` LTS build that retains the transaction ledger, audit commands, policy analytics, and shared-MySQL consistency fixes on Paper 1.21.11.
 - Added release metadata and documentation for the Minecraft 1.21.11 compatibility artifact.
+- Added a durable versioning policy for independently updated modern and LTS release lines.
 
 ### Changed
 
 - The LTS branch targets Java 21, Paper API 1.21.11, and `api-version: 1.21.11` without lowering the Java 25 baseline of the modern main branch.
 - Legacy Modrinth publishing defaults to Minecraft 1.21.11 and leaves the main project description unchanged.
 - The update checker now follows only Modrinth releases compatible with Paper 1.21.11.
+- Numbered the first LTS release `26.10.7.1-mc1.21.11`, based on modern release `26.10.7` with an independent LTS revision.
+- LTS releases use a distinct Paper 1.21.11 display name on Modrinth.
 
 ### Fixed
 

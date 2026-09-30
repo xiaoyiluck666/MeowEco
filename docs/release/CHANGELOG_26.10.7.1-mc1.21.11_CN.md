@@ -1,4 +1,4 @@
-# MeowEco Economy 26.10.7-mc1.21.11
+# MeowEco Economy 26.10.7.1-mc1.21.11
 
 此 LTS 兼容版本将当前 MeowEco 的交易账本、审计命令和经济政策分析带到 Paper 1.21.11，同时保持现代主线继续使用 Java 25。
 

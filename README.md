@@ -124,4 +124,4 @@ Important sections:
 
 ## Release Notes
 
-See [CHANGELOG.md](./CHANGELOG.md) for release details. This branch publishes Minecraft 1.21.11 compatibility artifacts; the `main` branch remains the modern Java 25 release line. Releases are distributed through [Modrinth](https://modrinth.com/plugin/meoweco/versions); GitHub hosts the source code, CI status, and [Wiki documentation](https://github.com/xiaoyiluck666/MeowEco/wiki).
+See [CHANGELOG.md](./CHANGELOG.md) for release details and [docs/VERSIONING.md](./docs/VERSIONING.md) for the modern/LTS numbering policy. This branch publishes Minecraft 1.21.11 compatibility artifacts; the `main` branch remains the modern Java 25 release line. Releases are distributed through [Modrinth](https://modrinth.com/plugin/meoweco/versions); GitHub hosts the source code, CI status, and [Wiki documentation](https://github.com/xiaoyiluck666/MeowEco/wiki).
