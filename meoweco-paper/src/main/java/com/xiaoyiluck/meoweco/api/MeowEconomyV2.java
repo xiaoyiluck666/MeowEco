@@ -160,7 +160,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
         if (!isEnabled() || accountID == null) {
             return false;
         }
-        try (@SuppressWarnings("unused") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (@SuppressWarnings("unusedLocal") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             return context.economyService().createAccount(accountID, name, context.currencies());
         }
     }
@@ -423,7 +423,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
             return failure(accountID, currency, "Amount cannot be represented at currency precision");
         }
         boolean success;
-        try (@SuppressWarnings("unused") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (@SuppressWarnings("unusedLocal") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             success = context.economyService().setBalance(accountID, currency, converted.getAsDouble());
         }
         context.invalidate(accountID, currency.getId());
@@ -445,7 +445,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
             return failure(accountID, currency, "Amount cannot be represented at currency precision");
         }
         boolean success;
-        try (@SuppressWarnings("unused") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (@SuppressWarnings("unusedLocal") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             success = context.economyService().withdraw(accountID, currency, converted.getAsDouble());
         }
         context.invalidate(accountID, currency.getId());
@@ -467,7 +467,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
             return failure(accountID, currency, "Amount cannot be represented at currency precision");
         }
         boolean success;
-        try (@SuppressWarnings("unused") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (@SuppressWarnings("unusedLocal") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             success = context.economyService().deposit(accountID, currency, converted.getAsDouble());
         }
         context.invalidate(accountID, currency.getId());
@@ -481,7 +481,7 @@ public final class MeowEconomyV2 implements net.milkbowl.vault2.economy.Economy 
             return multiFailure(BigDecimal.ZERO, "Invalid or unsafe transfer");
         }
         EconomyService.PayResult result;
-        try (@SuppressWarnings("unused") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
+        try (@SuppressWarnings("unusedLocal") AuditScope auditScope = context.database().openAuditScope(AUDIT_SOURCE, AUDIT_ACTOR)) {
             result = context.economyService().pay(from, to, currency, converted.getAsDouble());
         }
         context.invalidate(from, currency.getId());

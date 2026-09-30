@@ -213,7 +213,7 @@ public class MeowEconomy implements Economy {
         MeowEco plugin = getPlugin();
         Currency def = resolveDefaultCurrency(plugin);
         boolean success;
-        try (@SuppressWarnings("unused") var auditScope = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
+        try (@SuppressWarnings("unusedLocal") var auditScope = plugin.getDatabaseManager().openAuditScope("vault", "external_plugin")) {
             success = plugin.getDatabaseManager().createAccount(player.getUniqueId(), def.getId(), def.getInitialBalance());
         }
         return success;

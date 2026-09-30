@@ -86,7 +86,7 @@ public class RichTaxService {
             );
 
             RichTaxEngine.CycleResult result;
-            try (@SuppressWarnings("unused") var auditScope = plugin.getDatabaseManager().openAuditScope("rich_tax", "scheduler")) {
+            try (@SuppressWarnings("unusedLocal") var auditScope = plugin.getDatabaseManager().openAuditScope("rich_tax", "scheduler")) {
                 result = RichTaxEngine.execute(plugin.getDatabaseManager(), plugin.getCurrencies(), engineSettings);
             }
 

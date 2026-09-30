@@ -60,7 +60,7 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
         }
         String canonical = canonicalCurrencyId(currencyId);
         boolean success;
-        try (@SuppressWarnings("unused") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+        try (@SuppressWarnings("unusedLocal") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
             success = plugin.getDatabaseManager().deposit(uuid, canonical, normalizedAmount);
         }
         if (success) {
@@ -77,7 +77,7 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
         }
         String canonical = canonicalCurrencyId(currencyId);
         boolean success;
-        try (@SuppressWarnings("unused") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+        try (@SuppressWarnings("unusedLocal") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
             success = plugin.getDatabaseManager().withdraw(uuid, canonical, normalizedAmount);
         }
         if (success) {
@@ -109,7 +109,7 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
         }
         String canonical = canonicalCurrencyId(currencyId);
         boolean success;
-        try (@SuppressWarnings("unused") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+        try (@SuppressWarnings("unusedLocal") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
             success = plugin.getDatabaseManager().freeze(uuid, canonical, normalizedAmount);
         }
         if (success) {
@@ -126,7 +126,7 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
         }
         String canonical = canonicalCurrencyId(currencyId);
         boolean success;
-        try (@SuppressWarnings("unused") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+        try (@SuppressWarnings("unusedLocal") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
             success = plugin.getDatabaseManager().unfreeze(uuid, canonical, normalizedAmount);
         }
         if (success) {
@@ -143,7 +143,7 @@ public class MeowEcoAPIImpl implements MeowEcoAPI {
         }
         String canonical = canonicalCurrencyId(currencyId);
         boolean success;
-        try (@SuppressWarnings("unused") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
+        try (@SuppressWarnings("unusedLocal") var auditScope = plugin.getDatabaseManager().openAuditScope("meoweco_api", "external_plugin")) {
             success = plugin.getDatabaseManager().deductFrozen(uuid, canonical, normalizedAmount);
         }
         if (success) {
