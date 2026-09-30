@@ -26,7 +26,8 @@ function readListEnv(name, fallback) {
 const versionNumber = process.env.MEOWECO_VERSION?.trim() || readProjectVersion();
 const jarPath = path.resolve(process.env.MEOWECO_JAR ?? `meoweco-paper/build/libs/meoweco-paper-${versionNumber}.jar`);
 const changelogPath = path.resolve(process.env.MEOWECO_CHANGELOG ?? `docs/release/CHANGELOG_${versionNumber}_EN.md`);
-const supportedGameVersions = readListEnv('MODRINTH_GAME_VERSIONS', '26.1,26.1.1,26.1.2,26.2,26.3');
+const supportedGameVersions = readListEnv('MODRINTH_GAME_VERSIONS', '1.21.11');
+const isLegacyBuild = versionNumber.includes('-mc1.21.11');
 
 const changelog = fs.readFileSync(changelogPath, 'utf8');
 
@@ -148,8 +149,12 @@ async function main() {
     console.log(`Created version ${version.version_number} (${version.id})`);
   }
 
-  const project = await updateProject(token);
-  console.log(`Updated project ${project.slug ?? projectSlug}`);
+  if (isLegacyBuild) {
+    console.log('Skipped project metadata update for the legacy compatibility release.');
+  } else {
+    const project = await updateProject(token);
+    console.log(`Updated project ${project.slug ?? projectSlug}`);
+  }
 
   const latest = await requestJson(`https://api.modrinth.com/v2/project/${projectSlug}/version`, {
     headers: { 'User-Agent': userAgent },

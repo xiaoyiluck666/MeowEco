@@ -2,7 +2,7 @@ import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.api.tasks.compile.JavaCompile
 
 group = "com.xiaoyiluck"
-version = "26.10.7"
+version = "26.10.7-mc1.21.11"
 
 subprojects {
     apply(plugin = "java")
@@ -10,12 +10,12 @@ subprojects {
     version = rootProject.version
 
     extensions.configure<JavaPluginExtension> {
-        toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+        toolchain.languageVersion.set(JavaLanguageVersion.of(21))
     }
 
     tasks.withType<JavaCompile>().configureEach {
         options.encoding = "UTF-8"
-        options.release.set(25)
+        options.release.set(21)
     }
 
     configurations.configureEach {
@@ -26,10 +26,10 @@ subprojects {
 
 project(":meoweco-paper") {
     extensions.configure<JavaPluginExtension> {
-        toolchain.languageVersion.set(JavaLanguageVersion.of(25))
+        toolchain.languageVersion.set(JavaLanguageVersion.of(21))
     }
 
     tasks.withType<JavaCompile>().configureEach {
-        options.release.set(25)
+        options.release.set(21)
     }
 }

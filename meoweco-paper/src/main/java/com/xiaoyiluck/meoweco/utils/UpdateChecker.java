@@ -28,9 +28,9 @@ public class UpdateChecker {
     public CompletableFuture<Boolean> check() {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                // Modrinth API V2: /project/{slug}/version
-                // This returns a JSON array of versions, first one is the latest
-                URL url = new URI("https://api.modrinth.com/v2/project/" + slug + "/version").toURL();
+                // Keep the LTS branch on the Paper 1.21.11 release channel.
+                String filters = "?game_versions=%5B%221.21.11%22%5D&loaders=%5B%22paper%22%5D";
+                URL url = new URI("https://api.modrinth.com/v2/project/" + slug + "/version" + filters).toURL();
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
                 conn.setRequestProperty("User-Agent", "MeowEco-UpdateChecker/" + currentVersion);
@@ -82,8 +82,8 @@ public class UpdateChecker {
 
     private boolean isNewer(String latest, String current) {
         // Clean version strings (remove 'v' prefix if present)
-        latest = latest.toLowerCase().replace("v", "");
-        current = current.toLowerCase().replace("v", "");
+        latest = versionCore(latest);
+        current = versionCore(current);
 
         String[] latestParts = latest.split("\\.");
         String[] currentParts = current.split("\\.");
@@ -96,6 +96,10 @@ public class UpdateChecker {
             if (l < c) return false;
         }
         return false;
+    }
+
+    private String versionCore(String version) {
+        return version.toLowerCase().replaceFirst("^v", "").split("-", 2)[0];
     }
 
     private int tryParseInt(String s) {

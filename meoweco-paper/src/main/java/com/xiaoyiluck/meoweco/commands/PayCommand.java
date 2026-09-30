@@ -106,7 +106,7 @@ public class PayCommand implements CommandExecutor, TabCompleter {
             }
 
             EconomyService.PayResult payResult;
-            try (var _ = plugin.getDatabaseManager().openAuditScope("command.pay", playerName)) {
+            try (var auditScope = plugin.getDatabaseManager().openAuditScope("command.pay", playerName)) {
                 payResult = economyService.pay(player.getUniqueId(), target.getUniqueId(), finalCurrency, finalAmount);
             }
             double tax = payResult.tax();

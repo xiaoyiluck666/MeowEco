@@ -26,7 +26,7 @@ final class VaultEconomyOperations {
             return failure(uuid, "Amount must be greater than 0 and fit currency precision");
         }
         boolean success;
-        try (var _ = database.openAuditScope("vault", "external_plugin")) {
+        try (var auditScope = database.openAuditScope("vault", "external_plugin")) {
             success = economyService.deposit(uuid, currency, normalized);
         }
         double balance = balance(uuid);
@@ -42,7 +42,7 @@ final class VaultEconomyOperations {
             return failure(uuid, "Amount must be greater than 0 and fit currency precision");
         }
         boolean success;
-        try (var _ = database.openAuditScope("vault", "external_plugin")) {
+        try (var auditScope = database.openAuditScope("vault", "external_plugin")) {
             success = economyService.withdraw(uuid, currency, normalized);
         }
         double balance = balance(uuid);

@@ -3,7 +3,7 @@ version: '${version}'
 main: com.xiaoyiluck.meoweco.MeowEco
 description: A controllable multi-currency Paper economy with migration, audit, Classic Vault, VaultUnlocked v2, and SQL storage.
 load: STARTUP
-api-version: '26.1'
+api-version: '1.21.11'
 authors: [xiaoyiluck]
 softdepend: [Vault, PlaceholderAPI]
 permissions:

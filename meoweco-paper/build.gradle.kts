@@ -1,34 +1,22 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.gradle.api.attributes.java.TargetJvmVersion
-import org.gradle.api.tasks.SourceSetContainer
-import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.tasks.Jar
-import org.gradle.jvm.toolchain.JavaLanguageVersion
 
-val paperApiVersion = "26.3.build.38-alpha"
-val earliestPaper261ApiVersion = "26.1.1.build.8-alpha"
-val paper261Compatibility by configurations.creating
-val paper2612ApiVersion = "26.1.2.build.64-stable"
-val paper2612Compatibility by configurations.creating
-val paper262ApiVersion = "26.2.build.129-stable"
-val paper262Compatibility by configurations.creating
+val paperApiVersion = "1.21.11-R0.1-SNAPSHOT"
 
 plugins {
     id("com.gradleup.shadow") version "8.3.9"
 }
 
 configurations.named("compileClasspath") {
-    attributes.attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 25)
+    attributes.attribute(TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE, 21)
 }
 
 dependencies {
     implementation(project(":meoweco-core"))
 
     compileOnly("io.papermc.paper:paper-api:$paperApiVersion")
-    paper261Compatibility("io.papermc.paper:paper-api:$earliestPaper261ApiVersion")
-    paper2612Compatibility("io.papermc.paper:paper-api:$paper2612ApiVersion")
-    paper262Compatibility("io.papermc.paper:paper-api:$paper262ApiVersion")
     compileOnly("net.milkbowl.vault:VaultUnlocked:2.20.2") {
         isTransitive = false
     }
@@ -75,84 +63,6 @@ tasks.named<Jar>("jar") {
 
 tasks.named("assemble") {
     dependsOn(tasks.named("shadowJar"))
-}
-
-val compilePaper261CompatJava by tasks.registering(JavaCompile::class) {
-    description = "Compiles the Paper module against the earliest available Paper 26.1.x API to guard 26.1.x compatibility while the main target tracks Paper 26.3."
-    group = "verification"
-
-    val mainSourceSet = project.the<SourceSetContainer>()["main"]
-
-    dependsOn(project(":meoweco-core").tasks.named("classes"))
-
-    source = mainSourceSet.allJava
-    destinationDirectory.set(layout.buildDirectory.dir("tmp/paper-26-1-compat"))
-    classpath = files(
-        provider { mainSourceSet.compileClasspath.files.filter { !it.name.startsWith("paper-api-") } },
-        paper261Compatibility
-    )
-
-    options.encoding = "UTF-8"
-    options.release.set(25)
-    // Vault's compatibility interface still exposes legacy methods by design.
-    options.compilerArgs.add("-nowarn")
-    javaCompiler.set(javaToolchains.compilerFor {
-        languageVersion.set(JavaLanguageVersion.of(25))
-    })
-}
-
-val compilePaper2612CompatJava by tasks.registering(JavaCompile::class) {
-    description = "Compiles the Paper module against Paper 26.1.2 stable API to guard the supported 26.1.2 runtime line while the main target tracks Paper 26.3."
-    group = "verification"
-
-    val mainSourceSet = project.the<SourceSetContainer>()["main"]
-
-    dependsOn(project(":meoweco-core").tasks.named("classes"))
-
-    source = mainSourceSet.allJava
-    destinationDirectory.set(layout.buildDirectory.dir("tmp/paper-26-1-2-compat"))
-    classpath = files(
-        provider { mainSourceSet.compileClasspath.files.filter { !it.name.startsWith("paper-api-") } },
-        paper2612Compatibility
-    )
-
-    options.encoding = "UTF-8"
-    options.release.set(25)
-    // Vault's compatibility interface still exposes legacy methods by design.
-    options.compilerArgs.add("-nowarn")
-    javaCompiler.set(javaToolchains.compilerFor {
-        languageVersion.set(JavaLanguageVersion.of(25))
-    })
-}
-
-val compilePaper262CompatJava by tasks.registering(JavaCompile::class) {
-    description = "Compiles the Paper module against the latest stable Paper 26.2 API while the main target tracks Paper 26.3."
-    group = "verification"
-
-    val mainSourceSet = project.the<SourceSetContainer>()["main"]
-
-    dependsOn(project(":meoweco-core").tasks.named("classes"))
-
-    source = mainSourceSet.allJava
-    destinationDirectory.set(layout.buildDirectory.dir("tmp/paper-26-2-compat"))
-    classpath = files(
-        provider { mainSourceSet.compileClasspath.files.filter { !it.name.startsWith("paper-api-") } },
-        paper262Compatibility
-    )
-
-    options.encoding = "UTF-8"
-    options.release.set(25)
-    // Vault's compatibility interface still exposes legacy methods by design.
-    options.compilerArgs.add("-nowarn")
-    javaCompiler.set(javaToolchains.compilerFor {
-        languageVersion.set(JavaLanguageVersion.of(25))
-    })
-}
-
-tasks.named("check") {
-    dependsOn(compilePaper261CompatJava)
-    dependsOn(compilePaper2612CompatJava)
-    dependsOn(compilePaper262CompatJava)
 }
 
 val sqliteRegressionTest by tasks.registering(JavaExec::class) {

@@ -86,7 +86,7 @@ public class RichTaxService {
             );
 
             RichTaxEngine.CycleResult result;
-            try (var _ = plugin.getDatabaseManager().openAuditScope("rich_tax", "scheduler")) {
+            try (var auditScope = plugin.getDatabaseManager().openAuditScope("rich_tax", "scheduler")) {
                 result = RichTaxEngine.execute(plugin.getDatabaseManager(), plugin.getCurrencies(), engineSettings);
             }
 
