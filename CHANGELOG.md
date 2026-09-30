@@ -18,6 +18,7 @@ This file now serves as the running changelog for MeowEco.
 ### Fixed
 
 - Replaced Java 25 unnamed resource variables with Java 21-compatible named variables while preserving audit-scope behavior.
+- Suppressed false unused-variable diagnostics on audit-scope resources without adding runtime work or changing their close semantics.
 
 ## v26.10.7 - 2026-09-30
 

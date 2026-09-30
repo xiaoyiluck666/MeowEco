@@ -86,7 +86,7 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
             }
 
             boolean success;
-            try (var auditScope = plugin.getDatabaseManager().openAuditScope("command.take", senderName)) {
+            try (@SuppressWarnings("unused") var auditScope = plugin.getDatabaseManager().openAuditScope("command.take", senderName)) {
                 success = plugin.getDatabaseManager().withdraw(target.getUniqueId(), finalCurrency.getId(), finalAmount);
             }
             
