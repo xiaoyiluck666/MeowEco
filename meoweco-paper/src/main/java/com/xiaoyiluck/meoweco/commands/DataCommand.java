@@ -155,7 +155,9 @@ final class DataCommand {
     List<String> tabCompleteAudit(String[] args) {
         if (args.length == 1) {
             List<String> values = new ArrayList<>(List.of("export"));
-            plugin.getServer().getOnlinePlayers().forEach(player -> values.add(player.getName()));
+            plugin.getServer().getOnlinePlayers().forEach(player -> {
+                if (player != null) values.add(player.getName());
+            });
             return filter(values, args[0]);
         }
         if (args.length == 2 && !args[0].equalsIgnoreCase("export")) {
@@ -180,7 +182,7 @@ final class DataCommand {
         if (rounded > 0) {
             warnings.add(rounded + " balances will be rounded to " + currency.getDecimalPlaces() + " decimal places.");
         }
-        double total = balances.stream().mapToDouble(MigrationBalance::balance).sum();
+        double total = balances.stream().mapToDouble(balance -> balance.balance()).sum();
         return new MigrationPreview(preview.adapter(), preview.source(), List.copyOf(balances),
                 preview.skippedEntries(), total, List.copyOf(warnings));
     }

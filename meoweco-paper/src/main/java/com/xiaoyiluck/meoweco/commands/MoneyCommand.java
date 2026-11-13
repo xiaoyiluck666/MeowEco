@@ -248,6 +248,7 @@ public class MoneyCommand implements CommandExecutor, TabCompleter {
             // Add players if has permission
             if (sender.hasPermission("meoweco.balance.other")) {
                 for (Player p : Bukkit.getOnlinePlayers()) {
+                    if (p == null) continue;
                     String name = p.getName();
                     if (name.toLowerCase().startsWith(prefix)) {
                         suggestions.add(name);

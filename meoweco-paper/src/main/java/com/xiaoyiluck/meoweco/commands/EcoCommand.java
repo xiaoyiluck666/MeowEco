@@ -6,7 +6,6 @@ import com.xiaoyiluck.meoweco.service.EconomyService;
 import com.xiaoyiluck.meoweco.utils.AmountInput;
 import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextReplacementConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
@@ -18,6 +17,7 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 import org.bukkit.command.PluginCommand;
 
@@ -97,9 +97,9 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
 
             plugin.setExchangeRate(fromId, toId, rate);
             sender.sendMessage(plugin.getConfigManager().getComponent("eco-setrate-success")
-                    .replaceText(config -> config.matchLiteral("%from%").replacement(fromId.toLowerCase()))
-                    .replaceText(config -> config.matchLiteral("%to%").replacement(toId.toLowerCase()))
-                    .replaceText(config -> config.matchLiteral("%rate%").replacement(String.valueOf(rate))));
+                    .replaceText(config -> config.matchLiteral("%from%").replacement(Objects.requireNonNull(fromId.toLowerCase())))
+                    .replaceText(config -> config.matchLiteral("%to%").replacement(Objects.requireNonNull(toId.toLowerCase())))
+                    .replaceText(config -> config.matchLiteral("%rate%").replacement(Objects.requireNonNull(String.valueOf(rate)))));
             return true;
         }
 
@@ -123,8 +123,9 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 for (java.util.Map.Entry<java.util.UUID, String> entry : unknowns.entrySet()) {
                     try {
                         OfflinePlayer p = Bukkit.getOfflinePlayer(entry.getKey());
-                        if (p.getName() != null && !p.getName().equalsIgnoreCase("Unknown")) {
-                            plugin.getDatabaseManager().updatePlayerName(entry.getKey(), p.getName());
+                        String playerName = p.getName();
+                        if (playerName != null && !playerName.equalsIgnoreCase("Unknown")) {
+                            plugin.getDatabaseManager().updatePlayerName(entry.getKey(), playerName);
                             fixed++;
                         }
                     } catch (Exception ignored) {
@@ -134,7 +135,7 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 final int fixedCount = fixed;
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     sender.sendMessage(plugin.getConfigManager().getComponent("eco-refresh-success")
-                            .replaceText(TextReplacementConfig.builder().matchLiteral("%count%").replacement(String.valueOf(fixedCount)).build()));
+                            .replaceText(config -> config.matchLiteral("%count%").replacement(Objects.requireNonNull(String.valueOf(fixedCount)))));
                 });
             });
             return true;
@@ -175,7 +176,7 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
 
                     String key = hidden ? "eco-hide-success" : "eco-unhide-success";
                     sender.sendMessage(plugin.getConfigManager().getComponent(key)
-                            .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(displayName).build()));
+                            .replaceText(config -> config.matchLiteral("%player%").replacement(displayName)));
                 });
             });
             return true;
@@ -314,9 +315,9 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
                 plugin.invalidateVaultEconomyCache(finalTarget.getUniqueId(), finalCurrency.getId());
 
                 Component msg = plugin.getConfigManager().getComponent(finalMsgKey)
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(targetName).build())
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)).build())
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())).build());
+                        .replaceText(config -> config.matchLiteral("%player%").replacement(targetName))
+                        .replaceText(config -> config.matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)))
+                        .replaceText(config -> config.matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())));
                 sender.sendMessage(msg);
             });
         });
@@ -389,6 +390,7 @@ public class EcoCommand implements CommandExecutor, TabCompleter {
             String prefix = args[1].toLowerCase();
             List<String> names = new ArrayList<>();
             for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p == null) continue;
                 String name = p.getName();
                 if (prefix.isEmpty() || name.toLowerCase().startsWith(prefix)) {
                     names.add(name);

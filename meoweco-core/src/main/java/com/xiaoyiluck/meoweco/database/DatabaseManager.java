@@ -13,6 +13,11 @@ public interface DatabaseManager {
     boolean hasAccount(UUID uuid, String currency);
     boolean createAccount(UUID uuid, String currency, double initialBalance);
 
+    /** Settle a newly-created wallet's pending signed-identity initial grant, at most once. */
+    default boolean settleInitialBalance(UUID uuid, String currency, boolean premium) {
+        return false;
+    }
+
     default Optional<AccountBalance> findAccountBalance(UUID uuid, String currency) {
         if (!hasAccount(uuid, currency)) {
             return Optional.empty();
@@ -39,6 +44,14 @@ public interface DatabaseManager {
     void setBalance(UUID uuid, String currency, double amount);
     boolean deposit(UUID uuid, String currency, double amount);
     boolean withdraw(UUID uuid, String currency, double amount);
+
+    /** Source-aware storage implementations override this; unsupported backends fail closed. */
+    default Optional<FundsBalance> findFundsBalance(UUID uuid, String currency) { return Optional.empty(); }
+    default boolean withdrawForPlayerTrade(UUID uuid, String currency, double amount) { return false; }
+    default boolean debitWithReceipt(UUID uuid, String currency, double amount, String reference, boolean playerTrade) { return false; }
+    default boolean refundReceipt(UUID uuid, String currency, String reference) { return false; }
+    default String getReceiptState(UUID uuid, String currency, String reference) { return "UNAVAILABLE"; }
+
     boolean transfer(UUID from, UUID to, String currency, double amount);
     boolean transfer(UUID from, UUID to, String currency, double withdrawAmount, double depositAmount);
     boolean exchange(UUID uuid, String fromCurrency, String toCurrency, double withdrawAmount, double depositAmount);

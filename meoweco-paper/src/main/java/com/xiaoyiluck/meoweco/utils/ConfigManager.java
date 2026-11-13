@@ -147,7 +147,7 @@ public class ConfigManager {
 
     public Component parseColor(String text) {
         if (text == null) return Component.empty();
-        return LegacyComponentSerializer.legacySection().deserialize(text.replace('&', '§'));
+        return LegacyComponentSerializer.legacySection().deserialize(java.util.Objects.requireNonNull(text.replace('&', '§')));
     }
 
     public Component getComponent(String key) {

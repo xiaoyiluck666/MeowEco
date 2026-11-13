@@ -3,6 +3,7 @@ package com.xiaoyiluck.meoweco.utils;
 import com.xiaoyiluck.meoweco.MeowEco;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
+import org.jspecify.annotations.NonNull;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -41,7 +42,7 @@ public final class PlayerLookup {
                 .map(uuid -> plugin.getServer().getOfflinePlayer(uuid));
     }
 
-    public static String getDisplayName(OfflinePlayer player, String fallback) {
+    public static @NonNull String getDisplayName(OfflinePlayer player, String fallback) {
         if (player != null) {
             String playerName = player.getName();
             if (playerName != null && !playerName.isBlank()) {

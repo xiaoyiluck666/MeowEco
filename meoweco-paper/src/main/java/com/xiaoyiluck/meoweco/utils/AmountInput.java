@@ -3,8 +3,9 @@ package com.xiaoyiluck.meoweco.utils;
 import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.MoneyAmountPolicy;
-import net.kyori.adventure.text.TextReplacementConfig;
 import org.bukkit.command.CommandSender;
+
+import java.util.Objects;
 
 public final class AmountInput {
     private AmountInput() {
@@ -15,10 +16,9 @@ public final class AmountInput {
             return true;
         }
         sender.sendMessage(plugin.getConfigManager().getComponent("amount-too-precise")
-                .replaceText(TextReplacementConfig.builder()
+                .replaceText(config -> config
                         .matchLiteral("%decimals%")
-                        .replacement(String.valueOf(MoneyAmountPolicy.decimalPlaces(currency)))
-                        .build()));
+                        .replacement(Objects.requireNonNull(String.valueOf(MoneyAmountPolicy.decimalPlaces(currency))))));
         return false;
     }
 }

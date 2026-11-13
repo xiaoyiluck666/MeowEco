@@ -4,7 +4,6 @@ import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.database.PrecisionReport;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
@@ -129,13 +128,16 @@ public class MeowEcoCommand implements CommandExecutor, TabCompleter {
                 plugin.getUpdateChecker().check().thenAccept(available ->
                         plugin.getServer().getScheduler().runTask(plugin, () -> {
                             if (available) {
+                                String latestVersion = plugin.getUpdateChecker().getLatestVersion();
+                                String downloadUrl = plugin.getUpdateChecker().getDownloadUrl();
+                                if (latestVersion == null || downloadUrl == null) return;
                                 Component prefix = plugin.getConfigManager().getComponent("prefix");
                                 Component updateMsg = plugin.getConfigManager().getComponent("update-available")
-                                        .replaceText(TextReplacementConfig.builder().matchLiteral("%version%").replacement(plugin.getUpdateChecker().getLatestVersion()).build());
+                                        .replaceText(config -> config.matchLiteral("%version%").replacement(latestVersion));
 
                                 Component downloadLink = Component.text("[Click to Download]")
                                         .color(NamedTextColor.YELLOW)
-                                        .clickEvent(ClickEvent.openUrl(plugin.getUpdateChecker().getDownloadUrl()));
+                                        .clickEvent(ClickEvent.openUrl(downloadUrl));
 
                                 sender.sendMessage(prefix.append(updateMsg).append(Component.space()).append(downloadLink));
                             } else {

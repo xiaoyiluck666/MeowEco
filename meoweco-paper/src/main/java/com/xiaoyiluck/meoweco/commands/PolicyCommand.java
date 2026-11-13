@@ -4,11 +4,13 @@ import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import net.kyori.adventure.text.Component;
 import org.bukkit.command.CommandSender;
+import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 
 final class PolicyCommand {
     private final MeowEco plugin;
@@ -42,8 +44,8 @@ final class PolicyCommand {
                 double available = plugin.getDatabaseManager().getAvailableTotalBalance(id);
                 int accounts = plugin.getDatabaseManager().getAccountCount(id);
                 Map<String, Double> top = plugin.getDatabaseManager().getTopAccounts(id, 10);
-                double top10 = top.values().stream().mapToDouble(Double::doubleValue).sum();
-                double top1 = top.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0D);
+                double top10 = top.values().stream().mapToDouble(value -> value.doubleValue()).sum();
+                double top1 = top.values().stream().mapToDouble(value -> value.doubleValue()).max().orElse(0.0D);
                 rows.add(new PolicyRow(id, total, available, accounts,
                         total > 0.0D ? top1 / total * 100.0D : 0.0D,
                         total > 0.0D ? top10 / total * 100.0D : 0.0D));
@@ -54,10 +56,10 @@ final class PolicyCommand {
                     String total = currency == null ? String.valueOf(row.total()) : plugin.formatBalance(row.total(), currency);
                     String available = currency == null ? String.valueOf(row.available()) : plugin.formatBalance(row.available(), currency);
                     sender.sendMessage(rowTemplate
-                            .replaceText(config -> config.matchLiteral("%currency%").replacement(row.currencyId()))
-                            .replaceText(config -> config.matchLiteral("%accounts%").replacement(String.valueOf(row.accounts())))
-                            .replaceText(config -> config.matchLiteral("%total%").replacement(total))
-                            .replaceText(config -> config.matchLiteral("%circulating%").replacement(available))
+                            .replaceText(config -> config.matchLiteral("%currency%").replacement(Objects.requireNonNull(row.currencyId())))
+                            .replaceText(config -> config.matchLiteral("%accounts%").replacement(Objects.requireNonNull(String.valueOf(row.accounts()))))
+                            .replaceText(config -> config.matchLiteral("%total%").replacement(Objects.requireNonNull(total)))
+                            .replaceText(config -> config.matchLiteral("%circulating%").replacement(Objects.requireNonNull(available)))
                             .replaceText(config -> config.matchLiteral("%top1%").replacement(formatPercent(row.top1Percent())))
                             .replaceText(config -> config.matchLiteral("%top10%").replacement(formatPercent(row.top10Percent()))));
                 }
@@ -98,15 +100,15 @@ final class PolicyCommand {
             }
             String tierSummary = tiers;
             sender.sendMessage(ruleTemplate
-                    .replaceText(config -> config.matchLiteral("%currency%").replacement(id.toLowerCase(Locale.ROOT)))
+                    .replaceText(config -> config.matchLiteral("%currency%").replacement(Objects.requireNonNull(id.toLowerCase(Locale.ROOT))))
                     .replaceText(config -> config.matchLiteral("%threshold%").replacement(tierSummary))
                     .replaceText(config -> config.matchLiteral("%rate%").replacement("progressive"))
                     .replaceText(config -> config.matchLiteral("%enabled%").replacement(enabledValue)));
         }
     }
 
-    private String formatPercent(double value) {
-        return String.format(Locale.ROOT, "%.2f%%", value);
+    private @NonNull String formatPercent(double value) {
+        return Objects.requireNonNull(String.format(Locale.ROOT, "%.2f%%", value));
     }
 
     private record PolicyRow(String currencyId, double total, double available, int accounts,

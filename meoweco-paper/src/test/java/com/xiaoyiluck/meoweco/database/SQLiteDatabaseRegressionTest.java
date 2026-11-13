@@ -1,6 +1,9 @@
 package com.xiaoyiluck.meoweco.database;
 
 import com.xiaoyiluck.meoweco.MeowEco;
+import com.xiaoyiluck.meoweco.initial.InitialBalancePolicy;
+import com.xiaoyiluck.meoweco.service.GiftFundsPolicy;
+import com.xiaoyiluck.meoweco.objects.Currency;
 import com.zaxxer.hikari.HikariConfig;
 
 import java.nio.file.Files;
@@ -40,9 +43,298 @@ public final class SQLiteDatabaseRegressionTest {
             migrationImportsNewAndExistingAccountsAtomically(database);
             invalidMigrationDoesNotChangeBalances(database);
             independentInstancesObserveCommittedBalanceSnapshots(database);
+            signedIdentityInitialBalancesAreAtomicAndOneTime(database);
+            initialGrantRollsBackWithAuditFailure(database);
+            initialGrantSurvivesRestartAndConcurrentSessions(database);
+            identityPolicyRejectsUnknownAndInvalidAmounts();
+            initialFundsRemainSeparateAcrossSpendingAndTransfer(database);
+            exchangesPreserveGiftTags(database);
+            adminAndFrozenDebitsKeepSourceBalances(database);
+            paymentReceiptsRefundOriginalSourcesExactlyOnce(database);
+            sourceFailuresRollbackBalancesAndReceipts(database);
+            receiptsAndSourcesSurviveConcurrentInstances(database);
+            System.out.println("SQLite regression passed, including signed initial grants and fault/concurrency recovery.");
         } finally {
             database.close();
             deleteRecursively(tempDir);
+        }
+    }
+
+    private static final Currency IDENTITY_COINS = new Currency("identity", "Coins", "coin", "coins", 100, 2, 0);
+
+    private static UUID giftedWallet(TestSQLiteDatabase db) {
+        UUID id = UUID.randomUUID();
+        db.identityPolicy = InitialBalancePolicy.forCurrency(IDENTITY_COINS, 100, 1000);
+        assertTrue(db.createAccount(id, "identity", 100));
+        return id;
+    }
+
+    private static void assertFunds(TestSQLiteDatabase db, UUID id, String currency, double total, double gift) {
+        FundsBalance b = db.findFundsBalance(id, currency).orElseThrow();
+        assertDouble(total, b.balance()); assertDouble(gift, b.initialGiftBalance());
+        assertTrue(b.initialGiftBalance() >= 0 && b.initialGiftBalance() <= b.balance());
+    }
+
+    private static void initialFundsRemainSeparateAcrossSpendingAndTransfer(TestSQLiteDatabase db) {
+        db.fundsPolicy = GiftFundsPolicy.DEFAULT;
+        UUID a = giftedWallet(db), b = giftedWallet(db);
+        assertFunds(db, a, "identity", 100, 100);
+        assertTrue(db.settleInitialBalance(a, "identity", true));
+        assertFalse(db.settleInitialBalance(a, "identity", true));
+        assertFunds(db, a, "identity", 1000, 1000);
+        assertFalse(db.transfer(a, b, "identity", 1));
+        assertFalse(db.withdrawForPlayerTrade(a, "identity", 1));
+        assertTrue(db.deposit(a, "identity", 50));
+        assertTrue(db.transfer(a, b, "identity", 30, 29));
+        assertFunds(db, a, "identity", 1020, 1000);
+        assertFunds(db, b, "identity", 129, 100);
+        assertTrue(db.withdrawForPlayerTrade(a, "identity", 20));
+        assertFunds(db, a, "identity", 1000, 1000);
+        assertTrue(db.withdraw(a, "identity", 60));
+        assertFunds(db, a, "identity", 940, 940);
+        assertFalse(db.transfer(a, a, "identity", 1));
+
+        UUID c = giftedWallet(db);
+        db.fundsPolicy = new GiftFundsPolicy(false, GiftFundsPolicy.SpendingOrder.EARNED_FIRST);
+        assertTrue(db.deposit(c, "identity", 60));
+        assertTrue(db.withdraw(c, "identity", 40));
+        assertFunds(db, c, "identity", 120, 100);
+        assertTrue(db.withdraw(c, "identity", 30));
+        assertFunds(db, c, "identity", 90, 90);
+        db.fundsPolicy = new GiftFundsPolicy(true, GiftFundsPolicy.SpendingOrder.GIFT_FIRST);
+        assertTrue(db.transfer(c, b, "identity", 50, 49));
+        assertFunds(db, c, "identity", 40, 40);
+        assertFunds(db, b, "identity", 178, 149);
+        db.fundsPolicy = GiftFundsPolicy.DEFAULT;
+        assertFalse(db.transfer(b, c, "identity", 30));
+        assertTrue(db.transfer(b, c, "identity", 29));
+        assertFunds(db, b, "identity", 149, 149);
+    }
+
+    private static void exchangesPreserveGiftTags(TestSQLiteDatabase db) {
+        UUID a = giftedWallet(db), b = giftedWallet(db);
+        assertTrue(db.createAccount(a, "exchange-points", 0));
+        assertTrue(db.createAccount(b, "exchange-points", 0));
+        assertTrue(db.exchange(a, "identity", "exchange-points", 100, 10));
+        assertFunds(db, a, "identity", 0, 0);
+        assertFunds(db, a, "exchange-points", 10, 10);
+        assertFalse(db.transfer(a, b, "exchange-points", 1));
+        assertTrue(db.exchange(a, "exchange-points", "identity", 10, 100));
+        assertFunds(db, a, "identity", 100, 100);
+        assertTrue(db.deposit(a, "identity", 100));
+        assertTrue(db.exchange(a, "identity", "exchange-points", 150, 15));
+        assertFunds(db, a, "identity", 50, 0);
+        assertFunds(db, a, "exchange-points", 15, 10);
+        assertTrue(db.transfer(a, b, "exchange-points", 5));
+        assertFalse(db.transfer(a, b, "exchange-points", 0.01));
+        assertFalse(db.exchange(a, "identity", "identity", 1, 2));
+    }
+
+    private static void adminAndFrozenDebitsKeepSourceBalances(TestSQLiteDatabase db) {
+        UUID a = giftedWallet(db);
+        assertTrue(db.freeze(a, "identity", 20));
+        assertFalse(db.withdraw(a, "identity", 81));
+        assertTrue(db.deductFrozen(a, "identity", 20));
+        assertFunds(db, a, "identity", 80, 80);
+        assertTrue(db.updateBalance(a, "identity", 50));
+        assertFunds(db, a, "identity", 50, 50);
+        assertTrue(db.updateBalance(a, "identity", 75));
+        assertFunds(db, a, "identity", 75, 50);
+        assertTrue(db.importBalances(List.of(new MigrationBalance(a, "Gifted", 30)), "identity", "test", "console").success());
+        assertFunds(db, a, "identity", 30, 5);
+        UUID legacy = UUID.randomUUID();
+        assertTrue(db.createAccount(legacy, "legacy-coins", 123));
+        assertFunds(db, legacy, "legacy-coins", 123, 0);
+        UUID plain = UUID.randomUUID();
+        assertTrue(db.createAccount(plain, "plain-initial", 25));
+        assertFunds(db, plain, "plain-initial", 25, 25);
+        UUID explicit = UUID.randomUUID();
+        assertTrue(db.createAccount(explicit, "plain-initial", 7));
+        assertFunds(db, explicit, "plain-initial", 7, 0);
+    }
+
+    private static void paymentReceiptsRefundOriginalSourcesExactlyOnce(TestSQLiteDatabase db) {
+        UUID a = giftedWallet(db), b = giftedWallet(db);
+        assertTrue(db.deposit(a, "identity", 40));
+        String ref = "test:" + UUID.randomUUID();
+        assertTrue(db.debitWithReceipt(a, "identity", 120, ref, false));
+        assertTrue(db.debitWithReceipt(a, "identity", 120, ref, false));
+        assertFalse(db.debitWithReceipt(a, "identity", 121, ref, false));
+        assertFalse(db.debitWithReceipt(a, "identity", 120, ref, true));
+        assertEquals("DEBITED", db.getReceiptState(a, "identity", ref));
+        assertFunds(db, a, "identity", 20, 0);
+        assertFalse(db.refundReceipt(b, "identity", ref));
+        assertTrue(db.refundReceipt(a, "identity", ref));
+        assertTrue(db.refundReceipt(a, "identity", ref));
+        assertFunds(db, a, "identity", 140, 100);
+        assertFalse(db.debitWithReceipt(a, "identity", 120, ref, false));
+        assertEquals("REFUNDED", db.getReceiptState(a, "identity", ref));
+        assertTrue(db.debitWithReceipt(a, "identity", 40, ref + ":trade", true));
+        assertFunds(db, a, "identity", 100, 100);
+        assertFalse(db.debitWithReceipt(a, "identity", 1, ref + ":gift-trade", true));
+        assertEquals("MISSING", db.getReceiptState(a, "identity", ref + ":gift-trade"));
+        assertFalse(db.debitWithReceipt(a, "identity", 1, "bad ref", false));
+    }
+
+    private static void sourceFailuresRollbackBalancesAndReceipts(TestSQLiteDatabase db) throws Exception {
+        UUID a = giftedWallet(db);
+        String ref = "fault:" + UUID.randomUUID();
+        try (Connection c = db.getConnection(); var s = c.createStatement()) {
+            s.execute("CREATE TRIGGER fail_source_audit BEFORE INSERT ON meoweco_initial_funds_audit "
+                    + "BEGIN SELECT RAISE(ABORT, 'source audit failure'); END");
+        }
+        assertFalse(db.withdraw(a, "identity", 20));
+        assertFalse(db.debitWithReceipt(a, "identity", 20, ref, false));
+        assertFunds(db, a, "identity", 100, 100);
+        assertEquals("MISSING", db.getReceiptState(a, "identity", ref));
+        try (Connection c = db.getConnection(); var s = c.createStatement()) { s.execute("DROP TRIGGER fail_source_audit"); }
+        assertTrue(db.debitWithReceipt(a, "identity", 20, ref, false));
+        try (Connection c = db.getConnection(); var s = c.createStatement()) {
+            s.execute("CREATE TRIGGER fail_refund_audit BEFORE INSERT ON meoweco_audit_log "
+                    + "WHEN NEW.operation='RECEIPT_REFUND' BEGIN SELECT RAISE(ABORT, 'refund audit failure'); END");
+        }
+        assertFalse(db.refundReceipt(a, "identity", ref));
+        assertFunds(db, a, "identity", 80, 80);
+        assertEquals("DEBITED", db.getReceiptState(a, "identity", ref));
+        try (Connection c = db.getConnection(); var s = c.createStatement()) { s.execute("DROP TRIGGER fail_refund_audit"); }
+        assertTrue(db.refundReceipt(a, "identity", ref));
+        assertFunds(db, a, "identity", 100, 100);
+    }
+
+    private static void receiptsAndSourcesSurviveConcurrentInstances(TestSQLiteDatabase db) throws Exception {
+        UUID a = giftedWallet(db);
+        String ref = "concurrent:" + UUID.randomUUID();
+        TestSQLiteDatabase other = new TestSQLiteDatabase(db.databasePath); other.init();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<Boolean> f = executor.submit(() -> { start.await(); return db.debitWithReceipt(a, "identity", 70, ref, false); });
+            Future<Boolean> g = executor.submit(() -> { start.await(); return other.debitWithReceipt(a, "identity", 70, ref, false); });
+            start.countDown(); assertTrue(f.get()); assertTrue(g.get());
+            assertFunds(db, a, "identity", 30, 30);
+            db.close(); db.init();
+            assertFunds(db, a, "identity", 30, 30);
+            assertTrue(other.refundReceipt(a, "identity", ref));
+            assertTrue(db.refundReceipt(a, "identity", ref));
+            assertFunds(db, a, "identity", 100, 100);
+        } finally { executor.shutdownNow(); other.close(); }
+    }
+
+    private static void signedIdentityInitialBalancesAreAtomicAndOneTime(TestSQLiteDatabase db) throws Exception {
+        UUID legacy = UUID.randomUUID();
+        assertTrue(db.createAccount(legacy, "identity", 100));
+        db.identityPolicy = InitialBalancePolicy.forCurrency(IDENTITY_COINS, 100, 1000);
+        assertFalse(db.settleInitialBalance(legacy, "identity", true));
+        assertDouble(100, db.getBalance(legacy, "identity"));
+
+        UUID premium = UUID.randomUUID();
+        assertTrue(db.createAccount(premium, "identity", 100));
+        assertTrue(db.withdraw(premium, "identity", 40));
+        assertTrue(db.deposit(premium, "identity", 7));
+        assertTrue(db.freeze(premium, "identity", 10));
+        assertTrue(db.settleInitialBalance(premium, "identity", true));
+        assertDouble(967, db.getBalance(premium, "identity"));
+        assertDouble(10, db.getFrozenBalance(premium, "identity"));
+        assertFalse(db.settleInitialBalance(premium, "identity", true));
+        assertFalse(db.settleInitialBalance(premium, "identity", false));
+        assertDouble(967, db.getBalance(premium, "identity"));
+        assertInt(1, (int) db.getAuditHistory(premium, "identity", 100).stream()
+                .filter(a -> a.operation().equals("INITIAL_PREMIUM")).count());
+
+        UUID offline = UUID.randomUUID();
+        assertTrue(db.createAccount(offline, "identity", 100));
+        assertTrue(db.settleInitialBalance(offline, "identity", false));
+        assertFalse(db.settleInitialBalance(offline, "identity", true));
+        assertDouble(100, db.getBalance(offline, "identity"));
+
+        UUID explicit = UUID.randomUUID();
+        assertTrue(db.createAccount(explicit, "identity", 0));
+        assertFalse(db.settleInitialBalance(explicit, "identity", true));
+        assertDouble(0, db.getBalance(explicit, "identity"));
+
+        UUID imported = UUID.randomUUID();
+        assertTrue(db.importBalances(List.<MigrationBalance>of(new MigrationBalance(imported, "Imported", 123)),
+                "identity", "test", "test").success());
+        assertFalse(db.settleInitialBalance(imported, "identity", true));
+        assertDouble(123, db.getBalance(imported, "identity"));
+
+        UUID nearLimit = UUID.randomUUID();
+        assertTrue(db.createAccount(nearLimit, "identity", 100));
+        assertTrue(db.updateBalance(nearLimit, "identity", 0x1.fffffffffffffp52));
+        assertFalse(db.settleInitialBalance(nearLimit, "identity", true));
+        assertDouble(0x1.fffffffffffffp52, db.getBalance(nearLimit, "identity"));
+        assertTrue(db.withdraw(nearLimit, "identity", 900));
+        assertTrue(db.settleInitialBalance(nearLimit, "identity", true));
+        assertDouble(0x1.fffffffffffffp52, db.getBalance(nearLimit, "identity"));
+    }
+
+    private static void initialGrantRollsBackWithAuditFailure(TestSQLiteDatabase db) throws Exception {
+        UUID player = UUID.randomUUID();
+        assertTrue(db.createAccount(player, "identity", 100));
+        try (Connection c = db.getConnection(); var s = c.createStatement()) {
+            s.execute("CREATE TRIGGER fail_initial_audit BEFORE INSERT ON meoweco_audit_log "
+                    + "WHEN NEW.operation = 'INITIAL_PREMIUM' BEGIN SELECT RAISE(ABORT, 'test audit failure'); END");
+        }
+        assertFalse(db.settleInitialBalance(player, "identity", true));
+        assertDouble(100, db.getBalance(player, "identity"));
+        try (Connection c = db.getConnection(); var s = c.createStatement()) {
+            s.execute("DROP TRIGGER fail_initial_audit");
+        }
+        assertTrue(db.settleInitialBalance(player, "identity", true));
+        assertDouble(1000, db.getBalance(player, "identity"));
+
+        UUID failedCreation = UUID.randomUUID();
+        try (Connection c = db.getConnection(); var s = c.createStatement()) {
+            s.execute("CREATE TRIGGER fail_initial_marker BEFORE INSERT ON meoweco_initial_grants "
+                    + "BEGIN SELECT RAISE(ABORT, 'test marker failure'); END");
+        }
+        assertFalse(db.createAccount(failedCreation, "identity", 100));
+        assertFalse(db.hasAccount(failedCreation, "identity"));
+        assertTrue(db.getAuditHistory(failedCreation, "identity", 10).isEmpty());
+        try (Connection c = db.getConnection(); var s = c.createStatement()) {
+            s.execute("DROP TRIGGER fail_initial_marker");
+        }
+        assertTrue(db.createAccount(failedCreation, "identity", 100));
+        assertTrue(db.settleInitialBalance(failedCreation, "identity", true));
+        assertDouble(1000, db.getBalance(failedCreation, "identity"));
+    }
+
+    private static void initialGrantSurvivesRestartAndConcurrentSessions(TestSQLiteDatabase db) throws Exception {
+        UUID player = UUID.randomUUID();
+        assertTrue(db.createAccount(player, "identity", 100));
+        db.close();
+        db.init();
+        TestSQLiteDatabase other = new TestSQLiteDatabase(db.databasePath);
+        // Old pending rows retain their creation-time amounts even after configuration changes.
+        other.identityPolicy = InitialBalancePolicy.forCurrency(IDENTITY_COINS, 50, 2000);
+        other.init();
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            Future<Boolean> a = executor.submit(() -> { start.await(); return db.settleInitialBalance(player, "identity", true); });
+            Future<Boolean> b = executor.submit(() -> { start.await(); return other.settleInitialBalance(player, "identity", true); });
+            start.countDown();
+            assertInt(1, (a.get() ? 1 : 0) + (b.get() ? 1 : 0));
+            assertDouble(1000, db.getBalance(player, "identity"));
+            assertDouble(1000, other.getBalance(player, "identity"));
+            assertFalse(other.settleInitialBalance(player, "identity", true));
+        } finally {
+            executor.shutdownNow();
+            other.close();
+        }
+    }
+
+    private static void identityPolicyRejectsUnknownAndInvalidAmounts() {
+        assertEquals(Boolean.TRUE, InitialBalancePolicy.verifiedPremium("true", "true"));
+        assertEquals(Boolean.FALSE, InitialBalancePolicy.verifiedPremium("true", "false"));
+        assertTrue(InitialBalancePolicy.verifiedPremium("false", "false") == null);
+        assertTrue(InitialBalancePolicy.verifiedPremium("%meowidentity_verified%", "true") == null);
+        assertTrue(InitialBalancePolicy.verifiedPremium("true", "unknown") == null);
+        for (double[] amounts : new double[][]{{-1, 1000}, {100, 99}, {100, Double.NaN}, {100, 1000.001}}) {
+            try {
+                InitialBalancePolicy.forCurrency(IDENTITY_COINS, amounts[0], amounts[1]);
+                throw new AssertionError("Invalid initial amount accepted");
+            } catch (IllegalArgumentException expected) { }
         }
     }
 
@@ -136,7 +428,7 @@ public final class SQLiteDatabaseRegressionTest {
         Map<String, Double> top = database.getTopAccounts("duplicate", 10);
 
         assertInt(2, top.size());
-        assertDouble(300.0D, top.values().stream().mapToDouble(Double::doubleValue).sum());
+        assertDouble(300.0D, top.values().stream().mapToDouble(value -> value.doubleValue()).sum());
     }
 
     private static void largeBalanceMutationsFailWithoutMoneyLoss(TestSQLiteDatabase database) throws Exception {
@@ -227,7 +519,7 @@ public final class SQLiteDatabaseRegressionTest {
         database.setOfflineName(existing, "Existing");
         database.createAccount(existing, "migrated", 5.0D);
 
-        MigrationResult result = database.importBalances(List.of(
+        MigrationResult result = database.importBalances(List.<MigrationBalance>of(
                 new MigrationBalance(existing, "Existing", 25.5D),
                 new MigrationBalance(added, "Added", 70.0D)
         ), "migrated", "migration.test", "Console");
@@ -249,7 +541,7 @@ public final class SQLiteDatabaseRegressionTest {
         database.setOfflineName(existing, "Unchanged");
         database.createAccount(existing, "invalid-migration", 12.0D);
 
-        MigrationResult result = database.importBalances(List.of(
+        MigrationResult result = database.importBalances(List.<MigrationBalance>of(
                 new MigrationBalance(existing, "Unchanged", 99.0D),
                 new MigrationBalance(UUID.randomUUID(), "Invalid", Double.NaN)
         ), "invalid-migration", "migration.test", "Console");
@@ -369,6 +661,21 @@ public final class SQLiteDatabaseRegressionTest {
         private final Path databasePath;
         private final Map<UUID, String> names = new java.util.HashMap<>();
         private final Logger logger = Logger.getLogger("MeowEco-SQLite-Test");
+        private InitialBalancePolicy identityPolicy;
+        private GiftFundsPolicy fundsPolicy = GiftFundsPolicy.DEFAULT;
+
+        @Override
+        protected GiftFundsPolicy getGiftFundsPolicy() { return fundsPolicy; }
+
+        @Override
+        protected boolean isConfiguredInitialBalance(String currency, double amount) {
+            return currency.equals("plain-initial") && Double.compare(amount, 25.0D) == 0;
+        }
+
+        @Override
+        protected InitialBalancePolicy getInitialBalancePolicy(String currency) {
+            return currency.equals("identity") ? identityPolicy : null;
+        }
 
         private TestSQLiteDatabase(Path databasePath) {
             super((MeowEco) null);

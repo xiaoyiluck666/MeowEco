@@ -38,6 +38,7 @@ pay-success-sender-tax: "&aYou paid &e%amount% %currency% &ato &e%player% &7(Tax
 pay-success-receiver: "&aYou received &e%amount% %currency% &afrom &e%player%&a."
 pay-failed-amount: "&cAmount must be positive."
 pay-failed-balance: "&cInsufficient balance."
+pay-failed-initial-funds: "&cInsufficient transferable funds. Initial grants can be spent personally but cannot currently be transferred to other players."
 pay-failed-self: "&cYou cannot pay yourself."
 
 take-success-sender: "&aYou took &e%amount% %currency% &afrom &e%player%&a."

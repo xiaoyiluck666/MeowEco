@@ -90,6 +90,7 @@ public class PayCommand implements CommandExecutor, TabCompleter {
         // Pre-fetch templates
         Component playerNotFound = plugin.getConfigManager().getComponent("player-not-found");
         Component payFailedBalance = plugin.getConfigManager().getComponent("pay-failed-balance");
+        Component payFailedInitialFunds = plugin.getConfigManager().getComponent("pay-failed-initial-funds");
         Component successSenderTemplate = plugin.getConfigManager().getComponent("pay-success-sender");
         Component successSenderTaxTemplate = plugin.getConfigManager().getComponent("pay-success-sender-tax");
         Component successReceiverTemplate = plugin.getConfigManager().getComponent("pay-success-receiver");
@@ -106,6 +107,9 @@ public class PayCommand implements CommandExecutor, TabCompleter {
             }
 
             EconomyService.PayResult payResult;
+            boolean initialFundsBlocked = !plugin.getGiftFundsPolicy().allowPlayerTransfer()
+                    && plugin.getDatabaseManager().findFundsBalance(player.getUniqueId(), finalCurrency.getId())
+                    .map(f -> f.available() >= finalAmount && f.earnedAvailable() < finalAmount).orElse(false);
             try (var _ = plugin.getDatabaseManager().openAuditScope("command.pay", playerName)) {
                 payResult = economyService.pay(player.getUniqueId(), target.getUniqueId(), finalCurrency, finalAmount);
             }
@@ -148,7 +152,7 @@ public class PayCommand implements CommandExecutor, TabCompleter {
                         }
                     }
                 } else {
-                    sender.sendMessage(payFailedBalance);
+                    sender.sendMessage(initialFundsBlocked ? payFailedInitialFunds : payFailedBalance);
                 }
             });
         });
@@ -166,6 +170,7 @@ public class PayCommand implements CommandExecutor, TabCompleter {
             String prefix = args[0].toLowerCase();
             List<String> names = new ArrayList<>();
             for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p == null) continue;
                 if (p.getUniqueId().equals(((Player) sender).getUniqueId())) continue;
                 String name = p.getName();
                 if (prefix.isEmpty() || name.toLowerCase().startsWith(prefix)) {

@@ -5,7 +5,6 @@ import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.utils.AmountInput;
 import com.xiaoyiluck.meoweco.utils.PlayerLookup;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextReplacementConfig;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
@@ -103,18 +102,18 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
                 plugin.invalidateVaultEconomyCache(target.getUniqueId(), finalCurrency.getId());
 
                 Component senderMsg = senderMsgTemplate
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(targetName).build())
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)).build())
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())).build());
+                        .replaceText(config -> config.matchLiteral("%player%").replacement(targetName))
+                        .replaceText(config -> config.matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)))
+                        .replaceText(config -> config.matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())));
                 sender.sendMessage(senderMsg);
 
                 if (target.isOnline()) {
                     Player targetPlayer = target.getPlayer();
                     if (targetPlayer != null) {
                         Component receiverMsg = receiverMsgTemplate
-                                .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(senderName).build())
-                                .replaceText(TextReplacementConfig.builder().matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)).build())
-                                .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())).build());
+                                .replaceText(config -> config.matchLiteral("%player%").replacement(senderName))
+                                .replaceText(config -> config.matchLiteral("%amount%").replacement(plugin.formatShort(finalAmount, finalCurrency)))
+                                .replaceText(config -> config.matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(finalCurrency.getDisplayName())));
                         targetPlayer.sendMessage(receiverMsg);
                     }
                 }
@@ -130,6 +129,7 @@ public class TakeCommand implements CommandExecutor, TabCompleter {
             String prefix = args[0].toLowerCase();
             List<String> names = new ArrayList<>();
             for (Player p : Bukkit.getOnlinePlayers()) {
+                if (p == null) continue;
                 String name = p.getName();
                 if (prefix.isEmpty() || name.toLowerCase().startsWith(prefix)) {
                     names.add(name);

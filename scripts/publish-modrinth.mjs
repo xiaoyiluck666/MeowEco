@@ -33,6 +33,7 @@ const changelog = fs.readFileSync(changelogPath, 'utf8');
 function readProjectBody() {
   return fs.readFileSync(path.resolve('README.md'), 'utf8')
     .replace(/\r\n/g, '\n')
+    .replace(/\]\(\.\/([^)]+)\)/g, '](https://github.com/xiaoyiluck666/MeowEco/blob/main/$1)')
     .trim();
 }
 
@@ -118,7 +119,7 @@ async function updateProject(token) {
     headers: authHeaders(token, 'application/json'),
     body: JSON.stringify({
       title: 'MeowEco Economy',
-      description: 'Policy-first Paper 26.1-26.3 economy: measure supply, tune progressive anti-inflation controls, and audit every change. Multi-currency, Classic Vault, and optional VaultUnlocked v2.',
+      description: 'Paper 26.1-26.3 economy with inflation reports, progressive taxes, tracked starting funds, safe trade refunds, multi-currency Vault support, and SQLite/MySQL storage.',
       body: projectBody,
       source_url: 'https://github.com/xiaoyiluck666/MeowEco',
       issues_url: 'https://github.com/xiaoyiluck666/MeowEco/issues',

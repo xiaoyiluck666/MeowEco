@@ -2,7 +2,6 @@ package com.xiaoyiluck.meoweco.api;
 
 import com.xiaoyiluck.meoweco.objects.Currency;
 import org.bukkit.Bukkit;
-import org.bukkit.plugin.RegisteredServiceProvider;
 
 import java.util.Collection;
 
@@ -17,7 +16,7 @@ public interface MeowEcoAPI {
      * @return The API instance, or {@code null} if not registered.
      */
     static MeowEcoAPI get() {
-        RegisteredServiceProvider<MeowEcoAPI> rsp = Bukkit.getServicesManager().getRegistration(MeowEcoAPI.class);
+        var rsp = Bukkit.getServicesManager().getRegistration(MeowEcoAPI.class);
         if (rsp == null) return null;
         return rsp.getProvider();
     }
@@ -65,6 +64,24 @@ public interface MeowEcoAPI {
      * @return {@code true} if successful, {@code false} if insufficient funds.
      */
     boolean withdraw(java.util.UUID uuid, String currencyId, double amount);
+
+    /** Tracked remaining initial grants; legacy untracked balances are not guessed. */
+    default double getInitialGiftBalance(java.util.UUID uuid, String currencyId) { return 0.0D; }
+
+    /** Available funds eligible for direct/player trade under the current initial-funds policy. */
+    default double getTransferableBalance(java.util.UUID uuid, String currencyId) { return 0.0D; }
+
+    /** Atomic source-aware debit for player shops; generic Vault does not identify counterparties. */
+    default boolean withdrawForPlayerTrade(java.util.UUID uuid, String currencyId, double amount) { return false; }
+
+    /** Persistent idempotent debit. Reusing a reference with different arguments fails. */
+    default boolean debitWithReceipt(java.util.UUID uuid, String currencyId, double amount, String reference, boolean playerTrade) { return false; }
+
+    /** Idempotent refund to the original wallet, including its original gift labels. */
+    default boolean refundReceipt(java.util.UUID uuid, String currencyId, String reference) { return false; }
+
+    /** MISSING, DEBITED, REFUNDED, or UNAVAILABLE. */
+    default String getReceiptState(java.util.UUID uuid, String currencyId, String reference) { return "UNAVAILABLE"; }
 
     /**
      * Gets the frozen balance of a player for a specific currency.

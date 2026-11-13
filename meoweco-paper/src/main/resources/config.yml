@@ -66,6 +66,26 @@ precision-migration:
 # Default currency used by Vault and commands / Vault 与默认命令使用的默认货币
 default-currency: "coins"
 
+# 签名认证身份初始金币：需要本服 MeowIdentity + PlaceholderAPI；缺身份时不猜测正版/离线。
+# 只适用于启用后创建的新钱包，已有余额不补发、不重置。不开启时保持原 initial-balance 行为。
+# 钱包先给 offline 数额，首次确认正版后只补差；重连、重启、改名和换登录方式不重复领取。
+# 初始金额必须符合货币精度，premium >= offline；待确认记录保存创建时金额，后续调价不追溯。
+identity-initial-balance:
+  enabled: false
+  balances:
+    coins:
+      offline: 100.0
+      premium: 1000.0
+
+# 初始赠送余额规则，可 /meco reload。只追踪本版开始发放的新钱包配置初始币及正版补差。
+# 关闭时赠送余额不能 /pay 或通过 source-aware API 参与玩家交易；可自己消费。
+# Vault 不包含交易对手信息；第三方商店需接入 withdrawForPlayerTrade 才能区分玩家交易。
+# 旧钱包不按历史发放总额猜测剩余赠额；兑换保留赠送标签。
+initial-funds:
+  allow-player-transfer: false
+  # GIFT_FIRST（先赠送）或 EARNED_FIRST（先赚取）
+  spending-order: GIFT_FIRST
+
 # Exchange rates (1 source currency = N target currency) / 汇率（1 个源货币 = N 个目标货币）
 exchange-rates:
   # Enable currency exchange / 是否启用货币兑换

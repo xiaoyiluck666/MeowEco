@@ -1,69 +1,74 @@
 package com.xiaoyiluck.meoweco.utils;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.xiaoyiluck.meoweco.MeowEco;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.URI;
-import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class UpdateChecker {
+    private static final Pattern NUMERIC_VERSION = Pattern.compile("^[vV]?([0-9]+(?:\\.[0-9]+)*)(?:[-+].*)?$");
 
     private final MeowEco plugin;
     private final String currentVersion;
     private final String slug;
-    private String latestVersion;
-    private String downloadUrl;
+    private final String minecraftVersion;
+    private volatile String latestVersion;
+    private volatile String downloadUrl;
 
     public UpdateChecker(MeowEco plugin) {
         this.plugin = plugin;
         this.currentVersion = plugin.getPluginMeta().getVersion();
         this.slug = plugin.getConfig().getString("update-checker.slug", "meoweco");
+        this.minecraftVersion = plugin.getServer().getMinecraftVersion();
     }
 
     public CompletableFuture<Boolean> check() {
         return CompletableFuture.supplyAsync(() -> {
+            latestVersion = null;
+            downloadUrl = null;
             try {
-                // Modrinth API V2: /project/{slug}/version
-                // This returns a JSON array of versions, first one is the latest
-                URL url = new URI("https://api.modrinth.com/v2/project/" + slug + "/version").toURL();
+                // A more recently uploaded build may target a different Minecraft branch.
+                String gameVersions = URLEncoder.encode("[\"" + minecraftVersion + "\"]", StandardCharsets.UTF_8);
+                String loaders = URLEncoder.encode("[\"paper\"]", StandardCharsets.UTF_8);
+                var url = new URI("https://api.modrinth.com/v2/project/" + slug
+                        + "/version?game_versions=" + gameVersions + "&loaders=" + loaders).toURL();
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("GET");
-                conn.setRequestProperty("User-Agent", "MeowEco-UpdateChecker/" + currentVersion);
-                conn.setConnectTimeout(5000);
-                conn.setReadTimeout(5000);
+                try {
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("User-Agent", "MeowEco-UpdateChecker/" + currentVersion);
+                    conn.setConnectTimeout(5000);
+                    conn.setReadTimeout(5000);
+                    if (conn.getResponseCode() != 200) return false;
 
-                if (conn.getResponseCode() != 200) {
-                    return false;
+                    StringBuilder response = new StringBuilder();
+                    try (BufferedReader reader = new BufferedReader(
+                            new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                        String line;
+                        while ((line = reader.readLine()) != null) response.append(line);
+                    }
+
+                    Optional<String> update = findCompatibleUpdate(response.toString(), minecraftVersion, currentVersion);
+                    if (update.isPresent()) {
+                        latestVersion = update.get();
+                        downloadUrl = "https://modrinth.com/plugin/" + slug + "/versions";
+                    }
+                    return update.isPresent();
+                } finally {
+                    conn.disconnect();
                 }
-
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-                reader.close();
-
-                String json = response.toString();
-                // Simple parsing without external libraries (like Gson) to keep it lightweight
-                // The first version in the array is the latest.
-                // We look for "version_number":"..."
-                latestVersion = parseJsonField(json, "version_number");
-                
-                if (latestVersion == null) return false;
-
-                // Compare versions
-                boolean hasUpdate = isNewer(latestVersion, currentVersion);
-                if (hasUpdate) {
-                    downloadUrl = "https://modrinth.com/plugin/" + slug + "/versions";
-                }
-                return hasUpdate;
-
             } catch (Exception e) {
                 plugin.debug("Failed to check for updates: " + e.getMessage());
                 return false;
@@ -71,39 +76,51 @@ public class UpdateChecker {
         });
     }
 
-    private String parseJsonField(String json, String field) {
-        Pattern pattern = Pattern.compile("\"" + field + "\":\"([^\"]+)\"");
-        Matcher matcher = pattern.matcher(json);
-        if (matcher.find()) {
-            return matcher.group(1);
+    static Optional<String> findCompatibleUpdate(String json, String minecraftVersion, String currentVersion) {
+        JsonArray versions = JsonParser.parseString(json).getAsJsonArray();
+        String selected = currentVersion;
+        for (JsonElement element : versions) {
+            if (!element.isJsonObject()) continue;
+            JsonObject version = element.getAsJsonObject();
+            // Verify compatibility locally as well as applying the API query filters.
+            if (!contains(version, "game_versions", minecraftVersion)
+                    || !contains(version, "loaders", "paper")) continue;
+            JsonElement number = version.get("version_number");
+            if (number == null || !number.isJsonPrimitive() || !number.getAsJsonPrimitive().isString()) continue;
+            String candidate = number.getAsString();
+            if (isNewer(candidate, selected)) selected = candidate;
         }
-        return null;
+        return selected.equals(currentVersion) ? Optional.empty() : Optional.of(selected);
     }
 
-    private boolean isNewer(String latest, String current) {
-        // Clean version strings (remove 'v' prefix if present)
-        latest = latest.toLowerCase().replace("v", "");
-        current = current.toLowerCase().replace("v", "");
-
-        String[] latestParts = latest.split("\\.");
-        String[] currentParts = current.split("\\.");
-
-        int length = Math.max(latestParts.length, currentParts.length);
-        for (int i = 0; i < length; i++) {
-            int l = i < latestParts.length ? tryParseInt(latestParts[i]) : 0;
-            int c = i < currentParts.length ? tryParseInt(currentParts[i]) : 0;
-            if (l > c) return true;
-            if (l < c) return false;
+    private static boolean contains(JsonObject version, String field, String expected) {
+        JsonElement values = version.get(field);
+        if (values == null || !values.isJsonArray()) return false;
+        for (JsonElement value : values.getAsJsonArray()) {
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()
+                    && value.getAsString().equals(expected)) return true;
         }
         return false;
     }
 
-    private int tryParseInt(String s) {
-        try {
-            return Integer.parseInt(s.replaceAll("[^0-9]", ""));
-        } catch (NumberFormatException e) {
-            return 0;
+    static boolean isNewer(String latest, String current) {
+        String[] latestParts = numericParts(latest);
+        String[] currentParts = numericParts(current);
+        if (latestParts.length == 0 || currentParts.length == 0) return false;
+        int length = Math.max(latestParts.length, currentParts.length);
+        for (int i = 0; i < length; i++) {
+            BigInteger l = i < latestParts.length ? new BigInteger(latestParts[i]) : BigInteger.ZERO;
+            BigInteger c = i < currentParts.length ? new BigInteger(currentParts[i]) : BigInteger.ZERO;
+            int comparison = l.compareTo(c);
+            if (comparison != 0) return comparison > 0;
         }
+        return false;
+    }
+
+    private static String[] numericParts(String version) {
+        // Build metadata and Minecraft target suffixes are not numeric release components.
+        Matcher matcher = NUMERIC_VERSION.matcher(version.trim());
+        return matcher.matches() ? matcher.group(1).split("\\.") : new String[0];
     }
 
     public String getLatestVersion() {

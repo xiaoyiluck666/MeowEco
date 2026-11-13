@@ -45,7 +45,7 @@ public final class VaultUnlockedV2RegressionTest {
     private static final Currency COINS = new Currency("coins", "Coins", "coin", "coins", 0.0D, 2, 0.0D);
     private static final Currency WHOLE = new Currency("whole", "Whole", "whole", "whole", 0.0D, 0, 0.0D);
     private static final Currency TAXED = new Currency("taxed", "Taxed", "taxed", "taxed", 0.0D, 2, 0.0D,
-            List.of(new TaxPolicy.Tier(0.0D, 0.10D), new TaxPolicy.Tier(100.0D, 0.20D)));
+            List.<TaxPolicy.Tier>of(new TaxPolicy.Tier(0.0D, 0.10D), new TaxPolicy.Tier(100.0D, 0.20D)));
 
     private VaultUnlockedV2RegressionTest() {
     }
@@ -77,6 +77,8 @@ public final class VaultUnlockedV2RegressionTest {
             shutdownTimeoutCompletesFutureBeforeDeferredClose();
             submissionAfterShutdownIsRejected();
             schedulingFailureCompletesFuture();
+            nullResultCompletesAndReleasesOperation();
+            supplierFailureCompletesAndReleasesOperation();
         } finally {
             database.close();
             executor.shutdownNow();
@@ -113,7 +115,7 @@ public final class VaultUnlockedV2RegressionTest {
         MeowEconomy classic = new MeowEconomy(null);
 
         services.register(net.milkbowl.vault.economy.Economy.class, classic, owner, ServicePriority.Highest);
-        services.register(net.milkbowl.vault2.economy.Economy.class, modern, owner, ServicePriority.Highest);
+        services.register(net.milkbowl.vault2.economy.Economy.class, java.util.Objects.requireNonNull(modern), owner, ServicePriority.Highest);
 
         assertTrue(services.load(net.milkbowl.vault.economy.Economy.class) == classic);
         assertTrue(services.load(net.milkbowl.vault2.economy.Economy.class) == modern);
@@ -360,7 +362,7 @@ public final class VaultUnlockedV2RegressionTest {
     }
 
     private static void submissionAfterShutdownIsRejected() {
-        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(Runnable::run);
+        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(command -> command.run());
         assertTrue(manager.shutdown(Duration.ZERO).drained());
         AtomicBoolean mutated = new AtomicBoolean();
 
@@ -373,6 +375,36 @@ public final class VaultUnlockedV2RegressionTest {
         assertTrue(future.isCompletedExceptionally());
         assertFalse(mutated.get());
         assertInt(0, manager.trackedOperationCount());
+    }
+
+    private static void nullResultCompletesAndReleasesOperation() {
+        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(command -> command.run());
+        CompletableFuture<Void> future = manager.submit(() -> null);
+
+        assertTrue(future.isDone());
+        assertFalse(future.isCompletedExceptionally());
+        assertTrue(future.join() == null);
+        assertInt(0, manager.trackedOperationCount());
+        assertTrue(manager.shutdown(Duration.ZERO).drained());
+    }
+
+    private static void supplierFailureCompletesAndReleasesOperation() {
+        VaultAsyncOperationManager manager = new VaultAsyncOperationManager(command -> command.run());
+        RuntimeException failure = new IllegalStateException("test supplier failure");
+        CompletableFuture<Boolean> future = manager.submit(() -> {
+            throw failure;
+        });
+
+        assertTrue(future.isDone());
+        assertTrue(future.isCompletedExceptionally());
+        try {
+            future.join();
+            throw new AssertionError("Expected the supplier failure");
+        } catch (java.util.concurrent.CompletionException exception) {
+            assertTrue(exception.getCause() == failure);
+        }
+        assertInt(0, manager.trackedOperationCount());
+        assertTrue(manager.shutdown(Duration.ZERO).drained());
     }
 
     private static void schedulingFailureCompletesFuture() {

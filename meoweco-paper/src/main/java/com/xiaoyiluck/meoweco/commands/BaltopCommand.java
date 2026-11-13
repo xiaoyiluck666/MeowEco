@@ -4,7 +4,6 @@ import com.xiaoyiluck.meoweco.MeowEco;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.EconomyService;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextReplacementConfig;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -14,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class BaltopCommand implements CommandExecutor, TabCompleter {
@@ -99,22 +99,22 @@ public class BaltopCommand implements CommandExecutor, TabCompleter {
     
     private void sendBaltop(CommandSender sender, Map<String, Double> top, double totalBalance, Currency currency, Component header, Component totalMsg, Component entryTemplate) {
         if (header != null) {
-            sender.sendMessage(header.replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(currency.getDisplayName())).build()));
+            sender.sendMessage(header.replaceText(config -> config.matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(currency.getDisplayName()))));
         }
         if (totalMsg != null) {
-            sender.sendMessage(totalMsg.replaceText(TextReplacementConfig.builder()
+            sender.sendMessage(totalMsg.replaceText(config -> config
                     .matchLiteral("%amount%")
-                    .replacement(plugin.formatShort(totalBalance, currency))
-                    .build())
-                    .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(currency.getDisplayName())).build()));
+                    .replacement(plugin.formatShort(totalBalance, currency)))
+                    .replaceText(config -> config.matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(currency.getDisplayName()))));
         }
         int rank = 1;
         for (Map.Entry<String, Double> entry : top.entrySet()) {
+            String rankText = Objects.requireNonNull(String.valueOf(rank));
             Component msg = entryTemplate
-                    .replaceText(TextReplacementConfig.builder().matchLiteral("%rank%").replacement(String.valueOf(rank)).build())
-                    .replaceText(TextReplacementConfig.builder().matchLiteral("%player%").replacement(entry.getKey()).build())
-                    .replaceText(TextReplacementConfig.builder().matchLiteral("%amount%").replacement(plugin.formatShort(entry.getValue(), currency)).build())
-                    .replaceText(TextReplacementConfig.builder().matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(currency.getDisplayName())).build());
+                    .replaceText(config -> config.matchLiteral("%rank%").replacement(rankText))
+                    .replaceText(config -> config.matchLiteral("%player%").replacement(Objects.requireNonNull(entry.getKey())))
+                    .replaceText(config -> config.matchLiteral("%amount%").replacement(plugin.formatShort(entry.getValue(), currency)))
+                    .replaceText(config -> config.matchLiteral("%currency%").replacement(plugin.getConfigManager().parseColor(currency.getDisplayName())));
             sender.sendMessage(msg);
             rank++;
         }

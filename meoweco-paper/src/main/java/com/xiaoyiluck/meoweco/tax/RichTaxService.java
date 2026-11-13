@@ -126,9 +126,6 @@ public class RichTaxService {
         if (collector == null) {
             return null;
         }
-        if (collector.getUniqueId() == null) {
-            return null;
-        }
         return collector.getUniqueId();
     }
 

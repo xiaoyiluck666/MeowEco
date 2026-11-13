@@ -4,7 +4,9 @@
 
 **🧊 Measure inflation. Tune policy. Keep every balance change explainable.**
 
-MeowEco is a Paper-first, multi-currency economy for servers that want an economy they can operate, not just a number they can display. It gives staff a practical loop for keeping progression healthy:
+MeowEco is a Paper-first, multi-currency economy for servers that want an economy they can operate, not just a number they can display. It gives staff a practical loop for keeping progression healthy.
+
+Give new players a useful starting balance while keeping the remaining grant separate from earned money. Configure whether grants can enter player trades, preserve their source through currency exchanges, and let integrated shops refund a payment once with its original source intact.
 
 **📊 Measure → ⚙️ Adjust → 🧾 Verify**
 
@@ -23,6 +25,7 @@ Chinese server: set `messages.language: "zh_CN"` in `plugins/MeowEco/config.yml`
 - Server: Paper 26.1.x / 26.2 / 26.3
 - Java: 25
 - Optional integrations: Classic Vault, VaultUnlocked v2, PlaceholderAPI, TrMenu via commands/placeholders
+- Optional signed-identity grants: your server's MeowIdentity bridge plus PlaceholderAPI; neither is bundled
 - Storage: SQLite by default; MySQL supports multiple Paper instances sharing one database
 
 ## Build
@@ -38,6 +41,10 @@ These commands are for contributors and CI verification. **服务器用户请只
 
 ## Main Features
 
+- 🎁 **Tracked starting funds:** keep a remaining-grant ledger alongside the total balance; allow personal spending while controlling direct player transfers.
+- 🛒 **Trade and refund APIs:** atomically check eligible funds, debit with a persistent reference, and refund once to the original wallet with its original grant labels.
+- 🪪 **Optional identity grants:** new wallets receive an offline base amount, then a verified premium session receives its supplement once. Existing wallets are not reset or retroactively granted money.
+- 🔔 **Compatible update notices:** only consider releases for the running Minecraft version and Paper, including correct handling of local build metadata.
 - 🧊 **Anti-inflation policy loop:** measure supply and wealth concentration, apply targeted tax or fund controls, then compare the next report and audit trail.
 - 📉 **Controlled sinks and locked funds:** rich tax can remove or redirect balances above a threshold, while transfer tax and frozen funds shape how money enters, moves through, and leaves the economy.
 - 🧾 **Accountability by default:** deposits, withdrawals, payments, exchanges, admin edits, API/Vault writes, taxes, and migrations record who changed what and why.
@@ -70,6 +77,53 @@ Run `/meco policy report` to inspect each currency's total supply, circulating b
 Use `/meco audit <player> [currency] [limit]` or `/meco audit export [limit]` to review the result. Audit entries include the operation, source, actor, amount, before/after balances, timestamp, and transaction ID; related sides of a payment or exchange share one transaction ID.
 
 MeowEco does not promise fixed prices or automatic protection from every inflation source. It gives staff the measurements and policy levers to make deliberate changes and verify their effect.
+
+## New in 26.11.0: Starting Funds and Safe Refunds
+
+This feature release adds grant-source tracking, optional signed-identity starting balances, persistent payment receipts, and a fix for 26.x servers being offered the Minecraft 1.21.11 backport.
+
+### Configure how starting funds can be used
+
+```yaml
+initial-funds:
+  allow-player-transfer: false
+  spending-order: GIFT_FIRST
+```
+
+- The default blocks the remaining tracked grant from direct player payments while allowing ordinary personal spending. Set `allow-player-transfer: true` to permit grant transfers.
+- `GIFT_FIRST` spends grants before earned funds; `EARNED_FIRST` reverses that order. Changes take effect with `/meco reload`.
+- New configured starting balances and future signed-identity supplements are tracked. Existing balances with unknown sources are not relabeled.
+- Exchanges and permitted direct transfers preserve grant labels. Frozen funds also reduce the earned amount eligible for transfer.
+- A rejected `/pay` explains when the available money is restricted starting funds.
+
+### Optional signed-identity starting balances
+
+```yaml
+identity-initial-balance:
+  enabled: false
+  balances:
+    coins:
+      offline: 100.0
+      premium: 1000.0
+```
+
+Enable this only when your server provides the MeowIdentity signed-session bridge and PlaceholderAPI. These integrations are not included in MeowEco. Amounts must fit currency precision, with `premium >= offline >= 0`.
+
+A newly eligible wallet receives the offline amount first. When a signed session confirms premium status, MeowEco adds the difference once without replacing later earnings, spending, or frozen funds. Missing or unresolved identity data remains pending. Existing wallets are not backfilled, and pending grants retain the amounts recorded when the wallet was created.
+
+### Integrate player shops and refunds
+
+`MeowEcoAPI` exposes `getInitialGiftBalance`, `getTransferableBalance`, and atomic `withdrawForPlayerTrade`. For a payment that may need a refund, use `debitWithReceipt(uuid, currency, amount, reference, playerTrade)`, `getReceiptState`, and `refundReceipt`.
+
+Use a unique persistent reference per payment. Retrying the same debit does not charge twice; refunding it restores the original wallet and source labels once. Keep receipts to preserve duplicate protection.
+
+**Generic Vault withdrawals do not identify the counterparty or transaction purpose.** Existing Vault shops keep ordinary spending behavior. A player shop must explicitly integrate the player-trade API to enforce grant restrictions; a plain Vault deposit refund is treated as earned money. MeowEco cannot automatically enforce these rules across every third-party shop.
+
+### Upgrade notes
+
+Back up the database and configuration before upgrading. This release adds grant, source-audit, and payment-receipt tables without rewriting historical wallet balances. Signed-identity grants are disabled by default; source tracking and the transfer policy apply to new qualifying grants.
+
+If you need to relax grant restrictions, change the policy on this version. An older JAR does not maintain source labels or receipts, so transactions made during a downgrade require reconciliation before source restrictions are enabled again.
 
 ## Compatibility Matrix
 
@@ -124,7 +178,11 @@ Important sections:
 - `exchange-rates`: enable/disable and define rates.
 - `rich-tax`: configure per-currency periodic tax rules.
 - `currencies`: define currency ids, symbols, names, initial balances, and transfer tax.
+- `initial-funds`: control player transfers of tracked starting funds and the spending order.
+- `identity-initial-balance`: optionally set signed-identity starting amounts for new wallets.
 
 ## Release Notes
+
+**Latest: 26.11.0** — [中文更新日志](./docs/release/CHANGELOG_26.11.0_CN.md) · [English release notes](./docs/release/CHANGELOG_26.11.0_EN.md).
 
 See [CHANGELOG.md](./CHANGELOG.md) for release details. Releases are distributed through [Modrinth](https://modrinth.com/plugin/meoweco/versions); GitHub hosts the source code, CI status, and [Wiki documentation](https://github.com/xiaoyiluck666/MeowEco/wiki).

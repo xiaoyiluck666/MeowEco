@@ -2,7 +2,6 @@ package com.xiaoyiluck.meoweco.listeners;
 
 import com.xiaoyiluck.meoweco.MeowEco;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.TextReplacementConfig;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
@@ -24,6 +23,7 @@ public class PlayerListener implements Listener {
         Player player = event.getPlayer();
         final java.util.UUID uuid = player.getUniqueId();
         final String name = player.getName();
+        plugin.getIdentityInitialBalanceService().onJoin(player);
 
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try (var _ = plugin.getDatabaseManager().openAuditScope("player_join", name)) {
@@ -40,13 +40,16 @@ public class PlayerListener implements Listener {
         // Update notification
         if (player.hasPermission("meoweco.admin") && plugin.isUpdateAvailable()) {
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                String latestVersion = plugin.getUpdateChecker().getLatestVersion();
+                String downloadUrl = plugin.getUpdateChecker().getDownloadUrl();
+                if (latestVersion == null || downloadUrl == null) return;
                 Component prefix = plugin.getConfigManager().getComponent("prefix");
                 Component updateMsg = plugin.getConfigManager().getComponent("update-available")
-                        .replaceText(TextReplacementConfig.builder().matchLiteral("%version%").replacement(plugin.getUpdateChecker().getLatestVersion()).build());
+                        .replaceText(config -> config.matchLiteral("%version%").replacement(latestVersion));
 
                 Component downloadLink = Component.text("[Click to Download]")
                         .color(NamedTextColor.YELLOW)
-                        .clickEvent(ClickEvent.openUrl(plugin.getUpdateChecker().getDownloadUrl()));
+                        .clickEvent(ClickEvent.openUrl(downloadUrl));
 
                 player.sendMessage(prefix.append(updateMsg).append(Component.space()).append(downloadLink));
             }, 40L); // 2 seconds delay

@@ -38,6 +38,7 @@ pay-success-sender-tax: "&a你向 &e%player% &a转账 &e%amount% %currency% &7(�
 pay-success-receiver: "&a你收到了来自 &e%player% &a的转账 &e%amount% %currency%&a。"
 pay-failed-amount: "&c金额必须为正数。"
 pay-failed-balance: "&c余额不足。"
+pay-failed-initial-funds: "&c可转账金币不足。入服赠送金币可用于自己消费，当前不能转给其他玩家。"
 pay-failed-self: "&c你不能给自己转账。"
 
 take-success-sender: "&a你从 &e%player% &a扣除了 &e%amount% %currency%&a。"

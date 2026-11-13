@@ -1,6 +1,8 @@
 package com.xiaoyiluck.meoweco.database;
 
 import com.xiaoyiluck.meoweco.MeowEco;
+import com.xiaoyiluck.meoweco.initial.InitialBalancePolicy;
+import com.xiaoyiluck.meoweco.service.GiftFundsPolicy;
 import com.xiaoyiluck.meoweco.database.PrecisionReport.CurrencyReport;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -33,6 +35,10 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     private static final int CURRENT_SCHEMA_VERSION = 2;
     private static final String TABLE_NAME = "meoweco_accounts";
     private static final String AUDIT_TABLE_NAME = "meoweco_audit_log";
+    private static final String INITIAL_GRANTS_TABLE = "meoweco_initial_grants";
+    private static final String FUNDS_TABLE = "meoweco_initial_funds";
+    private static final String FUNDS_AUDIT_TABLE = "meoweco_initial_funds_audit";
+    private static final String RECEIPTS_TABLE = "meoweco_payment_receipts";
     private static final String TEMP_TABLE_NAME = "meoweco_accounts_migrating";
     private static final String META_TABLE_NAME = "meoweco_meta";
     private static final String META_KEY_SCHEMA_VERSION = "schema_version";
@@ -126,6 +132,14 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             statement.execute(getCreateStatement());
         }
         ensureAuditTable(conn);
+        ensureFundsTables(conn);
+        // Additive extension: old account rows/schema remain untouched and old JARs can ignore this table.
+        try (Statement statement = conn.createStatement()) {
+            statement.execute("CREATE TABLE IF NOT EXISTS " + INITIAL_GRANTS_TABLE + " ("
+                    + "uuid VARCHAR(36) NOT NULL, currency VARCHAR(32) NOT NULL, "
+                    + "offline_amount DOUBLE NOT NULL, premium_amount DOUBLE NOT NULL, "
+                    + "state VARCHAR(16) NOT NULL, PRIMARY KEY (uuid, currency))");
+        }
 
         boolean originalAutoCommit = conn.getAutoCommit();
         conn.setAutoCommit(false);
@@ -162,6 +176,170 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     + "meta_key VARCHAR(64) PRIMARY KEY, "
                     + "meta_value VARCHAR(255) NOT NULL)");
         }
+    }
+
+    private void ensureFundsTables(Connection conn) throws SQLException {
+        try (Statement statement = conn.createStatement()) {
+            // No inferred backfill: the old ledger never recorded remaining source balances.
+            statement.execute("CREATE TABLE IF NOT EXISTS " + FUNDS_TABLE + " ("
+                    + "uuid VARCHAR(36) NOT NULL, currency VARCHAR(32) NOT NULL, "
+                    + "gift_balance DOUBLE NOT NULL, PRIMARY KEY (uuid, currency))");
+            statement.execute("CREATE TABLE IF NOT EXISTS " + FUNDS_AUDIT_TABLE + " ("
+                    + "transaction_id VARCHAR(36) NOT NULL, account_uuid VARCHAR(36) NOT NULL, "
+                    + "currency VARCHAR(32) NOT NULL, gift_before DOUBLE NOT NULL, gift_after DOUBLE NOT NULL, "
+                    + "PRIMARY KEY (transaction_id, account_uuid, currency))");
+            statement.execute("CREATE TABLE IF NOT EXISTS " + RECEIPTS_TABLE + " ("
+                    + "reference VARCHAR(128) PRIMARY KEY, account_uuid VARCHAR(36) NOT NULL, "
+                    + "currency VARCHAR(32) NOT NULL, amount DOUBLE NOT NULL, gift_amount DOUBLE NOT NULL, "
+                    + "player_trade INTEGER NOT NULL, state VARCHAR(16) NOT NULL)");
+        }
+    }
+
+    protected GiftFundsPolicy getGiftFundsPolicy() {
+        return plugin == null ? GiftFundsPolicy.DEFAULT : plugin.getGiftFundsPolicy();
+    }
+
+    private void writeGift(Connection conn, UUID uuid, String currency, double gift) throws SQLException {
+        if (!isNonNegativeFinite(gift)) throw new SQLException("Invalid initial gift balance");
+        String sql = "INSERT INTO " + FUNDS_TABLE + " (uuid, currency, gift_balance) VALUES (?, ?, ?)"
+                + (isSQLite() ? " ON CONFLICT(uuid,currency) DO UPDATE SET gift_balance=excluded.gift_balance"
+                : " ON DUPLICATE KEY UPDATE gift_balance=VALUES(gift_balance)");
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, uuid.toString()); ps.setString(2, currency); ps.setDouble(3, gift); ps.executeUpdate();
+        }
+    }
+
+    private double remainingGift(AccountSnapshot before, double debit, GiftFundsPolicy policy) {
+        return Math.max(0, before.gift() - policy.spentGift(before.balance(), before.gift(), debit));
+    }
+
+    @Override
+    public Optional<FundsBalance> findFundsBalance(UUID uuid, String currency) {
+        try (Connection conn = getConnection()) {
+            AccountSnapshot snapshot = readAccountSnapshot(conn, uuid, currency);
+            validateFundsSnapshot(snapshot);
+            return snapshot == null ? Optional.empty()
+                    : Optional.of(new FundsBalance(snapshot.balance(), snapshot.frozen(), snapshot.gift()));
+        } catch (SQLException e) {
+            logSqlError("Source balance query failed", e); return Optional.empty();
+        }
+    }
+
+    @Override
+    public boolean withdrawForPlayerTrade(UUID uuid, String currency, double amount) {
+        if (!isPositiveFinite(amount)) return false;
+        String sql = "UPDATE " + getTableName()
+                + " SET balance = balance - ? WHERE balance - frozen_balance >= ? AND uuid = ? AND currency = ?";
+        return executeAccountUpdate(sql, "Player trade withdrawal failed", uuid, currency,
+                "PLAYER_TRADE_WITHDRAW", -amount, amount, amount);
+    }
+
+    private boolean validReference(String reference) {
+        return reference != null && reference.matches("[A-Za-z0-9_.:/-]{1,128}");
+    }
+
+    private record Receipt(UUID account, String currency, double amount, double gift, boolean playerTrade, String state) {}
+
+    private Receipt readReceipt(Connection conn, String reference, boolean lock) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("SELECT * FROM " + RECEIPTS_TABLE
+                + " WHERE reference = ?" + (lock && !isSQLite() ? " FOR UPDATE" : ""))) {
+            ps.setString(1, reference);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new Receipt(UUID.fromString(rs.getString("account_uuid")), rs.getString("currency"),
+                        rs.getDouble("amount"), rs.getDouble("gift_amount"), rs.getInt("player_trade") != 0, rs.getString("state"));
+            }
+        }
+    }
+
+    @Override
+    public String getReceiptState(UUID uuid, String currency, String reference) {
+        if (!validReference(reference)) return "UNAVAILABLE";
+        try (Connection conn = getConnection()) {
+            Receipt r = readReceipt(conn, reference, false);
+            if (r == null) return "MISSING";
+            return r.account().equals(uuid) && r.currency().equals(currency) ? r.state() : "UNAVAILABLE";
+        } catch (SQLException e) { logSqlError("Payment receipt lookup failed", e); return "UNAVAILABLE"; }
+    }
+
+    @Override
+    public boolean debitWithReceipt(UUID uuid, String currency, double amount, String reference, boolean playerTrade) {
+        if (!validReference(reference) || !isPositiveFinite(amount)) return false;
+        GiftFundsPolicy policy = getGiftFundsPolicy();
+        try (Connection conn = getConnection()) {
+            boolean auto = conn.getAutoCommit(); conn.setAutoCommit(false);
+            try {
+                int inserted;
+                try (PreparedStatement ps = conn.prepareStatement((isSQLite() ? "INSERT OR IGNORE INTO " : "INSERT IGNORE INTO ")
+                        + RECEIPTS_TABLE + " (reference, account_uuid, currency, amount, gift_amount, player_trade, state)"
+                        + " VALUES (?, ?, ?, ?, 0, ?, 'RESERVED')")) {
+                    ps.setString(1, reference); ps.setString(2, uuid.toString()); ps.setString(3, currency);
+                    ps.setDouble(4, amount); ps.setInt(5, playerTrade ? 1 : 0); inserted = ps.executeUpdate();
+                }
+                Receipt r = readReceipt(conn, reference, true);
+                if (r == null || !r.account().equals(uuid) || !r.currency().equals(currency)
+                        || Double.compare(r.amount(), amount) != 0 || r.playerTrade() != playerTrade) {
+                    conn.rollback(); return false;
+                }
+                if (inserted == 0) { conn.rollback(); return r.state().equals("DEBITED"); }
+                AccountSnapshot before = readAccountSnapshotForUpdate(conn, uuid, currency);
+                boolean restricted = playerTrade && !policy.allowPlayerTransfer();
+                if (before == null || before.balance() - before.frozen() < amount
+                        || (restricted && before.balance() - before.gift() - before.frozen() < amount)) {
+                    conn.rollback(); return false;
+                }
+                double gift = restricted ? 0 : policy.spentGift(before.balance(), before.gift(), amount);
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE " + getTableName()
+                        + " SET balance=balance-? WHERE uuid=? AND currency=? AND balance-frozen_balance>=?")) {
+                    ps.setDouble(1, amount); ps.setString(2, uuid.toString()); ps.setString(3, currency); ps.setDouble(4, amount);
+                    if (ps.executeUpdate() != 1) { conn.rollback(); return false; }
+                }
+                writeGift(conn, uuid, currency, Math.max(0, before.gift() - gift));
+                AccountSnapshot after = readAccountSnapshot(conn, uuid, currency);
+                if (!deltaMatches(before.balance(), after.balance(), amount, false)) { conn.rollback(); return false; }
+                insertAudit(conn, UUID.randomUUID().toString(), uuid, currency, "RECEIPT_DEBIT", -amount, before, after);
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE " + RECEIPTS_TABLE
+                        + " SET gift_amount=?, state='DEBITED' WHERE reference=? AND state='RESERVED'")) {
+                    ps.setDouble(1, gift); ps.setString(2, reference);
+                    if (ps.executeUpdate() != 1) throw new SQLException("Receipt debit state mismatch");
+                }
+                conn.commit(); return true;
+            } catch (SQLException e) { conn.rollback(); throw e; }
+            finally { conn.setAutoCommit(auto); }
+        } catch (SQLException e) { logSqlError("Receipt debit failed", e); return false; }
+    }
+
+    @Override
+    public boolean refundReceipt(UUID uuid, String currency, String reference) {
+        if (!validReference(reference)) return false;
+        try (Connection conn = getConnection()) {
+            boolean auto = conn.getAutoCommit(); conn.setAutoCommit(false);
+            try {
+                // Conditional write is first, serializing SQLite and MySQL refunds before wallet reads.
+                int changed;
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE " + RECEIPTS_TABLE
+                        + " SET state='REFUNDED' WHERE reference=? AND account_uuid=? AND currency=? AND state='DEBITED'")) {
+                    ps.setString(1, reference); ps.setString(2, uuid.toString()); ps.setString(3, currency); changed = ps.executeUpdate();
+                }
+                Receipt r = readReceipt(conn, reference, true);
+                if (r == null || !r.account().equals(uuid) || !r.currency().equals(currency)) { conn.rollback(); return false; }
+                if (changed == 0) { conn.rollback(); return r.state().equals("REFUNDED"); }
+                AccountSnapshot before = readAccountSnapshotForUpdate(conn, uuid, currency);
+                if (before == null || !isNonNegativeFinite(r.gift()) || r.gift() > r.amount()) { conn.rollback(); return false; }
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE " + getTableName()
+                        + " SET balance=balance+? WHERE uuid=? AND currency=? AND balance+?<=?")) {
+                    ps.setDouble(1, r.amount()); ps.setString(2, uuid.toString()); ps.setString(3, currency);
+                    ps.setDouble(4, r.amount()); ps.setDouble(5, MAX_SAFE_BALANCE);
+                    if (ps.executeUpdate() != 1) { conn.rollback(); return false; }
+                }
+                writeGift(conn, uuid, currency, before.gift() + r.gift());
+                AccountSnapshot after = readAccountSnapshot(conn, uuid, currency);
+                if (!deltaMatches(before.balance(), after.balance(), r.amount(), true)) { conn.rollback(); return false; }
+                insertAudit(conn, UUID.randomUUID().toString(), uuid, currency, "RECEIPT_REFUND", r.amount(), before, after);
+                conn.commit(); return true;
+            } catch (SQLException e) { conn.rollback(); throw e; }
+            finally { conn.setAutoCommit(auto); }
+        } catch (SQLException e) { logSqlError("Receipt refund failed", e); return false; }
     }
 
     private int getSchemaVersion(Connection conn) throws SQLException {
@@ -427,6 +605,11 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             return false;
         }
 
+        InitialBalancePolicy policy = getInitialBalancePolicy(currency);
+        if (policy != null && !policy.appliesTo(initialBalance)) policy = null;
+        boolean initialGrant = policy != null || isConfiguredInitialBalance(currency, initialBalance);
+        if (policy != null) initialBalance = policy.offlineBalance();
+
         String existingInfoSql = "SELECT username, hidden FROM " + getTableName() + " WHERE uuid = ? LIMIT 1";
         String insertSql = "INSERT INTO " + getTableName()
                 + " (uuid, currency, balance, username, hidden, frozen_balance) VALUES (?, ?, ?, ?, ?, ?)";
@@ -465,8 +648,23 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                         return false;
                     }
                 }
+                writeGift(conn, uuid, currency, initialGrant ? initialBalance : 0.0D);
                 AccountSnapshot after = readAccountSnapshot(conn, uuid, currency);
-                AccountSnapshot before = new AccountSnapshot(name, 0.0D, 0.0D);
+                AccountSnapshot before = new AccountSnapshot(name, 0.0D, 0.0D, 0.0D);
+                if (policy != null) {
+                    // Eligibility and the base grant commit together. Never enroll an existing wallet.
+                    // A retained marker also prevents deleting/recreating a wallet from earning a second premium grant.
+                    String marker = (isSQLite() ? "INSERT OR IGNORE INTO " : "INSERT IGNORE INTO ")
+                            + INITIAL_GRANTS_TABLE
+                            + " (uuid, currency, offline_amount, premium_amount, state) VALUES (?, ?, ?, ?, 'PENDING')";
+                    try (PreparedStatement ps = conn.prepareStatement(marker)) {
+                        ps.setString(1, uuid.toString());
+                        ps.setString(2, currency);
+                        ps.setDouble(3, policy.offlineBalance());
+                        ps.setDouble(4, policy.premiumBalance());
+                        ps.executeUpdate();
+                    }
+                }
                 insertAudit(conn, UUID.randomUUID().toString(), uuid, currency,
                         "CREATE_ACCOUNT", initialBalance, before, after);
                 conn.commit();
@@ -489,6 +687,79 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         }
     }
 
+    protected InitialBalancePolicy getInitialBalancePolicy(String currency) {
+        return plugin == null ? null : plugin.getInitialBalancePolicies().get(currency);
+    }
+
+    protected boolean isConfiguredInitialBalance(String currency, double amount) {
+        var configured = plugin == null ? null : plugin.getCurrency(currency);
+        return configured != null && Double.compare(configured.getInitialBalance(), amount) == 0;
+    }
+
+    @Override
+    public boolean settleInitialBalance(UUID uuid, String currency, boolean premium) {
+        try (Connection conn = getConnection()) {
+            boolean autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+            try {
+                // First statement is a conditional write: takes the SQLite writer/MySQL row lock
+                // before reading snapshots. Concurrent joins/instances can settle exactly once.
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE " + INITIAL_GRANTS_TABLE
+                        + " SET state = ? WHERE uuid = ? AND currency = ? AND state = 'PENDING'")) {
+                    ps.setString(1, premium ? "PREMIUM" : "OFFLINE");
+                    ps.setString(2, uuid.toString());
+                    ps.setString(3, currency);
+                    if (ps.executeUpdate() != 1) {
+                        conn.rollback();
+                        return false;
+                    }
+                }
+                double difference;
+                try (PreparedStatement ps = conn.prepareStatement("SELECT offline_amount, premium_amount FROM "
+                        + INITIAL_GRANTS_TABLE + " WHERE uuid = ? AND currency = ?")) {
+                    ps.setString(1, uuid.toString());
+                    ps.setString(2, currency);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) throw new SQLException("Initial grant marker missing");
+                        difference = premium ? rs.getDouble(2) - rs.getDouble(1) : 0.0D;
+                    }
+                }
+                if (!isNonNegativeFinite(difference)) throw new SQLException("Invalid initial grant difference");
+                AccountSnapshot before = readAccountSnapshotForUpdate(conn, uuid, currency);
+                if (before == null) throw new SQLException("Initial grant account missing");
+                if (difference > 0.0D) {
+                    try (PreparedStatement ps = conn.prepareStatement("UPDATE " + getTableName()
+                            + " SET balance = balance + ? WHERE uuid = ? AND currency = ? AND balance + ? <= ?")) {
+                        ps.setDouble(1, difference);
+                        ps.setString(2, uuid.toString());
+                        ps.setString(3, currency);
+                        ps.setDouble(4, difference);
+                        ps.setDouble(5, MAX_SAFE_BALANCE);
+                        if (ps.executeUpdate() != 1) throw new SQLException("Initial grant exceeds safe balance");
+                    }
+                }
+                AccountSnapshot after = readAccountSnapshot(conn, uuid, currency);
+                if (difference > 0.0D && !deltaMatches(before.balance(), after.balance(), difference, true)) {
+                    throw new SQLException("Initial grant was not represented exactly");
+                }
+                writeGift(conn, uuid, currency, before.gift() + difference);
+                after = readAccountSnapshot(conn, uuid, currency);
+                insertAudit(conn, UUID.randomUUID().toString(), uuid, currency,
+                        premium ? "INITIAL_PREMIUM" : "INITIAL_OFFLINE", difference, before, after);
+                conn.commit();
+                return true;
+            } catch (SQLException e) {
+                conn.rollback(); // Marker, money, and audit roll back as one unit, so retries are safe.
+                throw e;
+            } finally {
+                conn.setAutoCommit(autoCommit);
+            }
+        } catch (SQLException e) {
+            logSqlError("Initial balance settlement failed", e);
+            return false;
+        }
+    }
+
     @Override
     public Optional<AccountBalance> findAccountBalance(UUID uuid, String currency) {
         String sql = "SELECT balance, frozen_balance FROM " + getTableName() + " WHERE uuid = ? AND currency = ?";
@@ -498,7 +769,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
             ps.setString(2, currency);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return Optional.of(new AccountBalance(
+                    return Optional.<AccountBalance>of(new AccountBalance(
                             rs.getDouble(COLUMN_BALANCE),
                             rs.getDouble(COLUMN_FROZEN_BALANCE)));
                 }
@@ -560,7 +831,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     @Override
     public boolean transfer(UUID from, UUID to, String currency, double withdrawAmount, double depositAmount) {
-        if (!isPositiveFinite(withdrawAmount) || !isNonNegativeFinite(depositAmount)) {
+        if (from.equals(to) || !isPositiveFinite(withdrawAmount) || !isNonNegativeFinite(depositAmount)) {
             return false;
         }
 
@@ -581,6 +852,13 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     conn.rollback();
                     return false;
                 }
+                GiftFundsPolicy fundsPolicy = getGiftFundsPolicy();
+                if (!fundsPolicy.allowPlayerTransfer()
+                        && fromBefore.balance() - fromBefore.gift() - fromBefore.frozen() < withdrawAmount) {
+                    conn.rollback(); return false;
+                }
+                double giftedDebit = fundsPolicy.allowPlayerTransfer()
+                        ? fundsPolicy.spentGift(fromBefore.balance(), fromBefore.gift(), withdrawAmount) : 0.0D;
                 psWithdraw.setDouble(1, withdrawAmount);
                 psWithdraw.setString(2, from.toString());
                 psWithdraw.setString(3, currency);
@@ -604,6 +882,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     return false;
                 }
 
+                writeGift(conn, from, currency, fromBefore.gift() - giftedDebit);
+                writeGift(conn, to, currency, toBefore.gift()
+                        + GiftFundsPolicy.convertedGift(giftedDebit, withdrawAmount, depositAmount));
                 String transactionId = UUID.randomUUID().toString();
                 AccountSnapshot fromAfter = readAccountSnapshot(conn, from, currency);
                 AccountSnapshot toAfter = readAccountSnapshot(conn, to, currency);
@@ -633,7 +914,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         if (!isPositiveFinite(withdrawAmount) || !isPositiveFinite(depositAmount)) {
             return false;
         }
-        if (fromCurrency == null || toCurrency == null) {
+        if (fromCurrency == null || toCurrency == null || fromCurrency.equals(toCurrency)) {
             return false;
         }
 
@@ -655,6 +936,8 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     conn.rollback();
                     return false;
                 }
+                GiftFundsPolicy fundsPolicy = getGiftFundsPolicy();
+                double giftedDebit = fundsPolicy.spentGift(fromBefore.balance(), fromBefore.gift(), withdrawAmount);
                 psWithdraw.setDouble(1, withdrawAmount);
                 psWithdraw.setString(2, uuid.toString());
                 psWithdraw.setString(3, fromCurrency);
@@ -678,6 +961,9 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     return false;
                 }
 
+                writeGift(conn, uuid, fromCurrency, Math.max(0, fromBefore.gift() - giftedDebit));
+                writeGift(conn, uuid, toCurrency, toBefore.gift()
+                        + GiftFundsPolicy.convertedGift(giftedDebit, withdrawAmount, depositAmount));
                 String transactionId = UUID.randomUUID().toString();
                 AccountSnapshot fromAfter = readAccountSnapshot(conn, uuid, fromCurrency);
                 AccountSnapshot toAfter = readAccountSnapshot(conn, uuid, toCurrency);
@@ -1109,6 +1395,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     private boolean executeAccountUpdate(String sql, String errorMessage, UUID uuid, String currency,
                                          String operation, Double auditAmount, Object... params) {
+        GiftFundsPolicy fundsPolicy = getGiftFundsPolicy();
         try (Connection conn = getConnection()) {
             boolean originalAutoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
@@ -1117,6 +1404,10 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 if (before == null) {
                     conn.rollback();
                     return false;
+                }
+                if (operation.equals("PLAYER_TRADE_WITHDRAW") && !fundsPolicy.allowPlayerTransfer()
+                        && before.balance() - before.gift() - before.frozen() < Math.abs(auditAmount)) {
+                    conn.rollback(); return false;
                 }
 
                 int index = 1;
@@ -1141,7 +1432,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 double amount = auditAmount == null
                         ? nonZeroDifference(after.balance() - before.balance(), after.frozen() - before.frozen())
                         : auditAmount;
-                insertAudit(conn, UUID.randomUUID().toString(), uuid, currency, operation, amount, before, after);
+                insertAudit(conn, UUID.randomUUID().toString(), uuid, currency, operation, amount, before, after, fundsPolicy);
                 conn.commit();
                 return true;
             } catch (SQLException e) {
@@ -1236,8 +1527,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                     AccountSnapshot before;
                     try (ResultSet rs = select.executeQuery()) {
                         if (rs.next()) {
-                            before = new AccountSnapshot(rs.getString(COLUMN_USERNAME),
-                                    rs.getDouble(COLUMN_BALANCE), rs.getDouble(COLUMN_FROZEN_BALANCE));
+                            before = readAccountSnapshotForUpdate(conn, migration.uuid(), currency);
                         } else {
                             before = null;
                         }
@@ -1249,7 +1539,8 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                         insert.setDouble(3, migration.balance());
                         insert.setString(4, username);
                         insert.executeUpdate();
-                        before = new AccountSnapshot(username, 0.0D, 0.0D);
+                        writeGift(conn, migration.uuid(), currency, 0.0D);
+                        before = new AccountSnapshot(username, 0.0D, 0.0D, 0.0D);
                         created++;
                     } else {
                         update.setDouble(1, migration.balance());
@@ -1288,13 +1579,22 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
     }
 
     private AccountSnapshot readAccountSnapshotForUpdate(Connection conn, UUID uuid, String currency) throws SQLException {
-        return readAccountSnapshot(conn, uuid, currency, !isSQLite());
+        AccountSnapshot snapshot = readAccountSnapshot(conn, uuid, currency, !isSQLite());
+        validateFundsSnapshot(snapshot);
+        return snapshot;
+    }
+
+    private void validateFundsSnapshot(AccountSnapshot snapshot) throws SQLException {
+        if (snapshot != null && (!isNonNegativeFinite(snapshot.gift())
+                || snapshot.gift() > snapshot.balance() + 0.000000001D))
+            throw new SQLException("Initial gift balance outside wallet bounds");
     }
 
     private AccountSnapshot readAccountSnapshot(Connection conn, UUID uuid, String currency,
                                                 boolean forUpdate) throws SQLException {
-        String sql = "SELECT username, balance, frozen_balance FROM " + getTableName()
-                + " WHERE uuid = ? AND currency = ?"
+        String sql = "SELECT a.username, a.balance, a.frozen_balance, COALESCE(g.gift_balance,0) AS gift_balance FROM " + getTableName()
+                + " a LEFT JOIN " + FUNDS_TABLE + " g ON a.uuid=g.uuid AND a.currency=g.currency"
+                + " WHERE a.uuid = ? AND a.currency = ?"
                 + (forUpdate ? " FOR UPDATE" : "");
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -1303,8 +1603,10 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
                 if (!rs.next()) {
                     return null;
                 }
-                return new AccountSnapshot(rs.getString(COLUMN_USERNAME),
-                        rs.getDouble(COLUMN_BALANCE), rs.getDouble(COLUMN_FROZEN_BALANCE));
+                double gift = rs.getDouble("gift_balance");
+                double balance = rs.getDouble(COLUMN_BALANCE);
+                return new AccountSnapshot(rs.getString(COLUMN_USERNAME), balance,
+                        rs.getDouble(COLUMN_FROZEN_BALANCE), gift);
             }
         }
     }
@@ -1335,10 +1637,32 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
 
     private void insertAudit(Connection conn, String transactionId, UUID uuid, String currency, String operation,
                              double amount, AccountSnapshot before, AccountSnapshot after) throws SQLException {
+        insertAudit(conn, transactionId, uuid, currency, operation, amount, before, after, getGiftFundsPolicy());
+    }
+
+    private void insertAudit(Connection conn, String transactionId, UUID uuid, String currency, String operation,
+                             double amount, AccountSnapshot before, AccountSnapshot after,
+                             GiftFundsPolicy fundsPolicy) throws SQLException {
         if (before == null || after == null) {
             throw new SQLException("Audit snapshot is missing for " + uuid + " / " + currency);
         }
         AuditContext context = auditContext.get();
+        double gift = after.gift();
+        if (operation.equals("WITHDRAW") || operation.equals("DEDUCT_FROZEN")
+                || operation.equals("SET_BALANCE") || operation.equals("MIGRATE_SET")
+                || operation.equals("PLAYER_TRADE_WITHDRAW")) {
+            double debit = Math.max(0, before.balance() - after.balance());
+            boolean restrictedTrade = operation.equals("PLAYER_TRADE_WITHDRAW")
+                    && !fundsPolicy.allowPlayerTransfer();
+            gift = restrictedTrade ? before.gift() : remainingGift(before, debit, fundsPolicy);
+            gift = Math.min(gift, after.balance());
+            writeGift(conn, uuid, currency, gift);
+        }
+        try (PreparedStatement source = conn.prepareStatement("INSERT INTO " + FUNDS_AUDIT_TABLE
+                + " (transaction_id, account_uuid, currency, gift_before, gift_after) VALUES (?, ?, ?, ?, ?)")) {
+            source.setString(1, transactionId); source.setString(2, uuid.toString()); source.setString(3, currency);
+            source.setDouble(4, before.gift()); source.setDouble(5, gift); source.executeUpdate();
+        }
         String sql = "INSERT INTO " + AUDIT_TABLE_NAME
                 + " (transaction_id, created_at, account_uuid, username, currency, operation, amount,"
                 + " balance_before, balance_after, frozen_before, frozen_after, source, actor)"
@@ -1395,7 +1719,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         double amount = params.length > 0 && params[0] instanceof Number number ? number.doubleValue() : 0.0D;
         return switch (operation) {
             case "DEPOSIT" -> deltaMatches(before.balance(), after.balance(), requestedAmount, true);
-            case "WITHDRAW" -> deltaMatches(before.balance(), after.balance(), requestedAmount, false);
+            case "WITHDRAW", "PLAYER_TRADE_WITHDRAW" -> deltaMatches(before.balance(), after.balance(), Math.abs(requestedAmount), false);
             case "FREEZE" -> deltaMatches(before.frozen(), after.frozen(), requestedAmount, true);
             case "UNFREEZE" -> deltaMatches(before.frozen(), after.frozen(), Math.abs(requestedAmount), false);
             case "DEDUCT_FROZEN" -> deltaMatches(before.balance(), after.balance(), Math.abs(requestedAmount), false)
@@ -1428,7 +1752,7 @@ public abstract class AbstractSQLDatabase implements DatabaseManager {
         return clean.length() <= 64 ? clean : clean.substring(0, 64);
     }
 
-    private record AccountSnapshot(String username, double balance, double frozen) {
+    private record AccountSnapshot(String username, double balance, double frozen, double gift) {
     }
 
     private record AccountReference(UUID uuid, String currency) {

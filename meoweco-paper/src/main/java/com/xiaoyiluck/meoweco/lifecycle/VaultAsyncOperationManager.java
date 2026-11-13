@@ -173,14 +173,20 @@ public final class VaultAsyncOperationManager {
                 status = OperationStatus.RUNNING;
             }
 
-            T result = null;
-            Throwable failure = null;
+            T result;
             try {
                 result = supplier.get();
             } catch (Throwable error) {
-                failure = error;
+                finish();
+                future.completeExceptionally(error);
+                return;
             }
 
+            finish();
+            future.complete(result);
+        }
+
+        private void finish() {
             boolean stopped;
             synchronized (lock) {
                 status = OperationStatus.FINISHED;
@@ -189,11 +195,6 @@ public final class VaultAsyncOperationManager {
             }
             if (stopped) {
                 termination.complete(null);
-            }
-            if (failure == null) {
-                future.complete(result);
-            } else {
-                future.completeExceptionally(failure);
             }
         }
     }

@@ -64,6 +64,10 @@ tasks.processResources {
 
 tasks.withType<ShadowJar> {
     archiveClassifier.set("")
+    from(rootProject.file("LICENSE")) {
+        into("META-INF")
+        rename { "LICENSE-MeowEco.txt" }
+    }
     relocate("com.zaxxer.hikari", "com.xiaoyiluck.meoweco.libs.hikari")
     relocate("com.mysql", "com.xiaoyiluck.meoweco.libs.mysql")
     relocate("org.bstats", "com.xiaoyiluck.meoweco.libs.bstats")
@@ -193,7 +197,17 @@ val mysqlMultiInstanceRegressionTest by tasks.registering(JavaExec::class) {
     mainClass.set("com.xiaoyiluck.meoweco.database.MySQLMultiInstanceRegressionTest")
 }
 
+val updateCheckerRegressionTest by tasks.registering(JavaExec::class) {
+    description = "Runs Minecraft-compatible update selection and version comparison regression tests."
+    group = "verification"
+
+    dependsOn(tasks.named("testClasses"))
+    classpath = sourceSets["test"].runtimeClasspath + sourceSets["main"].compileClasspath
+    mainClass.set("com.xiaoyiluck.meoweco.utils.UpdateCheckerRegressionTest")
+}
+
 tasks.named("test") {
+    dependsOn(updateCheckerRegressionTest)
     dependsOn(sqliteRegressionTest)
     dependsOn(migrationRegressionTest)
     dependsOn(vaultUnlockedV2RegressionTest)

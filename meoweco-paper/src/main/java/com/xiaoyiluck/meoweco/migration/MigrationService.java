@@ -45,17 +45,15 @@ public final class MigrationService {
     }
 
     public MigrationPreview previewVault(String requestedSource) {
-        RegisteredServiceProvider<Economy> registration = plugin.getServer().getServicesManager()
+        RegisteredServiceProvider<? extends Economy> registration = plugin.getServer().getServicesManager()
                 .getRegistrations(Economy.class).stream()
                 .filter(candidate -> !isMeowEco(candidate))
-                .filter(candidate -> requestedSource == null || requestedSource.isBlank()
-                        || candidate.getPlugin().getName().equalsIgnoreCase(requestedSource)
-                        || candidate.getProvider().getName().equalsIgnoreCase(requestedSource))
+                .filter(candidate -> matchesVaultSource(candidate, requestedSource))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(
                         "No source Vault economy found. Available: " + String.join(", ", vaultSources())));
 
-        Economy economy = registration.getProvider();
+        Economy economy = java.util.Objects.requireNonNull(registration.getProvider());
         Map<UUID, MigrationBalance> balances = new LinkedHashMap<>();
         int skipped = 0;
         for (OfflinePlayer player : plugin.getServer().getOfflinePlayers()) {
@@ -168,7 +166,7 @@ public final class MigrationService {
                 + FILE_TIME.format(LocalDateTime.now()) + ".csv");
         List<MigrationBalance> current = incoming.stream()
                 .filter(balance -> plugin.getDatabaseManager().hasAccount(balance.uuid(), currency))
-                .map(balance -> new MigrationBalance(balance.uuid(), balance.username(),
+                .<MigrationBalance>map(balance -> new MigrationBalance(balance.uuid(), balance.username(),
                         plugin.getDatabaseManager().findBalance(balance.uuid(), currency).orElse(0.0D)))
                 .sorted(Comparator.comparing(balance -> balance.uuid().toString()))
                 .toList();
@@ -209,8 +207,15 @@ public final class MigrationService {
         return plugin.getDataFolder().toPath().resolveSibling("Essentials").resolve("userdata");
     }
 
-    private boolean isMeowEco(RegisteredServiceProvider<Economy> registration) {
+    private boolean isMeowEco(RegisteredServiceProvider<?> registration) {
         return registration.getPlugin().equals(plugin) || registration.getProvider() instanceof MeowEconomy;
+    }
+
+    private boolean matchesVaultSource(RegisteredServiceProvider<?> registration, String requestedSource) {
+        return requestedSource == null || requestedSource.isBlank()
+                || registration.getPlugin().getName().equalsIgnoreCase(requestedSource)
+                || (registration.getProvider() instanceof Economy economy
+                    && economy.getName().equalsIgnoreCase(requestedSource));
     }
 
     private MigrationPreview preview(String adapter, String source, Map<UUID, MigrationBalance> balances,
@@ -218,7 +223,7 @@ public final class MigrationService {
         List<MigrationBalance> sorted = balances.values().stream()
                 .sorted(Comparator.comparing(balance -> balance.uuid().toString()))
                 .toList();
-        double total = sorted.stream().mapToDouble(MigrationBalance::balance).sum();
+        double total = sorted.stream().mapToDouble(balance -> balance.balance()).sum();
         return new MigrationPreview(adapter, source, sorted, skipped, total, List.copyOf(warnings));
     }
 

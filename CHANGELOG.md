@@ -2,6 +2,38 @@
 
 This file now serves as the running changelog for MeowEco.
 
+## v26.11.0 - 2026-11-13
+
+### Added
+
+- Added optional signed-identity starting balances through MeowIdentity and PlaceholderAPI: new wallets receive an offline base amount and a verified premium supplement at most once.
+- Added an initial-grant source ledger and source audit committed atomically with wallet writes, including identity premium supplements.
+- Added reloadable `initial-funds.allow-player-transfer` (default false) and `spending-order` (`GIFT_FIRST` default, or `EARNED_FIRST`).
+- Added source-aware transferable balance / player-trade debit APIs and persistent idempotent debit/refund receipts that restore original source labels.
+- Added SQLite regressions for transfer restrictions, both spending orders, currency conversions, allowed transfer labels, frozen/admin/import debits, audit failure rollbacks, receipt replay protection and independent-instance/restart behavior.
+- Added regressions for signed-identity settlement, Vault async null/exception cleanup, compatible update selection, and dotted version comparison.
+- Added Chinese and English 26.11.0 release notes and documented configuration, integration requirements, and upgrade behavior.
+
+### Changed
+
+- Promoted the local feature work to public feature release `26.11.0`; the feature/API additions warrant a minor version increment from `26.10.7`.
+- Updated the README, plugin description, and Modrinth summary for starting funds and safe refunds while retaining the existing inflation-policy features.
+- Direct transfers reserve frozen funds conservatively against earned funds; generic Vault consumption remains compatible and follows the configured spending order.
+- New configured initial grants and signed supplements are tagged; legacy unknown sources are not guessed or rebased.
+- Documented the existing progressive transfer tax and the explicit integration boundary for third-party player shops using generic Vault.
+- Filtered Modrinth requests and release selection by the running Minecraft version and Paper loader, choosing the highest compatible numeric release.
+- Included the original MIT license in the packaged JAR and retained Java 25 / Paper 26.1.x, 26.2, and 26.3 support.
+
+### Fixed
+
+- Fixed 26.x servers being offered `26.10.7.1-mc1.21.11`, and corrected numeric component comparison without folding build metadata or Minecraft suffix digits into release numbers.
+- Prevented duplicate identity supplements across reconnects, restarts, and concurrent instances; grant state, balance, and audit commit or roll back together.
+- Prevented currency conversion or permitted direct transfers from dropping gift provenance.
+- Prevented reference reuse, duplicate receipt refunds and source-audit failures from creating or destroying money.
+- Added a localized `/pay` explanation when total funds exist but transferable earned funds do not.
+- Fixed Java nullability diagnostics in command registration, player lookups, update notifications, formatting, migration, and tests without disabling checks.
+- Kept Vault async futures and operation cleanup consistent when suppliers return null or throw.
+
 ## v26.10.7 - 2026-09-30
 
 ### Added
@@ -493,3 +525,47 @@ Use one section per release:
 ### Fixed
 - ...
 ```
+# 2026-10-29 猫窝26.10.7+maowo.1
+
+## Added
+- 可配置的签名身份新钱包初始赠额，复用MeowIdentity的verified/premium，正版与离线分流。
+- 独立持久标记与事务审计，覆盖身份延迟、重连、重启和多实例并发；附SQLite故障回滚回归。
+
+## Changed
+- 普通钱包创建时先给离线基础额，正版确认后一次补差，保留期间交易和冻结余额；既有钱包不追溯补发。
+- 保留本服源码基线与构建/回滚记录；JAR附带原MIT许可证。
+
+## Fixed
+- 以数据库条件更新保证补差与完成标记同进同退，避免重复发初始赠额或用set覆盖玩家消费。
+
+## VS Code Java diagnostics - 2026-10-29
+
+### Added
+
+- Added regressions for Vault async operations that return null or throw, checking future completion, operation cleanup, and shutdown.
+
+### Changed
+
+- Used Adventure's consumer-based text replacement API and explicit non-null formatting/display-name contracts.
+- Preserved generic nullability in API, migration, database, and regression-test code; removed an unused resource binding and an unreachable UUID null check.
+
+### Fixed
+
+- Fixed the 95 Java diagnostics reproduced with VS Code's Eclipse compiler and existing null-analysis settings across main and test sources, without disabling checks or suppressing warnings.
+- Checked cached command and player-name lookups before dereferencing them, guarded player suggestions and update notifications, and removed the invalid null initialization of a generic async result.
+
+## Update compatibility fix - 2026-11-13
+
+### Added
+
+- Added update-checker regressions for the 1.21.11 backport appearing before 26.x releases, platform compatibility, unordered releases, and local build metadata.
+
+### Changed
+
+- Filter Modrinth update requests by the running Minecraft version and Paper loader, verify release compatibility locally, and select the highest compatible plugin version.
+- Parse Modrinth responses as JSON using Gson provided by Paper; close response streams and disconnect HTTP connections after checks.
+
+### Fixed
+
+- Prevented 26.x servers from receiving update notices for the Minecraft 1.21.11 backport.
+- Fixed dotted numeric version comparison and excluded build metadata and Minecraft target suffixes from numeric release components.

@@ -17,8 +17,13 @@ import com.xiaoyiluck.meoweco.utils.UpdateChecker;
 import com.xiaoyiluck.meoweco.objects.Currency;
 import com.xiaoyiluck.meoweco.service.TaxPolicy;
 import com.xiaoyiluck.meoweco.service.EconomyService;
+import com.xiaoyiluck.meoweco.service.GiftFundsPolicy;
+import com.xiaoyiluck.meoweco.initial.InitialBalancePolicy;
+import com.xiaoyiluck.meoweco.initial.IdentityInitialBalanceService;
 import net.milkbowl.vault.economy.Economy;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.command.PluginCommand;
+import org.jspecify.annotations.NonNull;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bstats.bukkit.Metrics;
@@ -30,6 +35,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -53,6 +59,9 @@ public class MeowEco extends JavaPlugin {
     private MeowEcoPlaceholders placeholders;
     private UpdateChecker updateChecker;
     private RichTaxService richTaxService;
+    private IdentityInitialBalanceService identityInitialBalanceService;
+    private volatile Map<String, InitialBalancePolicy> initialBalancePolicies = Map.of();
+    private volatile GiftFundsPolicy giftFundsPolicy = GiftFundsPolicy.DEFAULT;
     private Metrics metrics;
     private boolean updateAvailable = false;
     
@@ -72,6 +81,8 @@ public class MeowEco extends JavaPlugin {
         configManager = new ConfigManager(this);
         loadCurrencies();
         loadExchangeRates();
+        loadInitialBalancePolicies();
+        identityInitialBalanceService = new IdentityInitialBalanceService(this);
 
         // Initialize Database
         String storageType = getConfig().getString("storage.type", "sqlite");
@@ -99,25 +110,30 @@ public class MeowEco extends JavaPlugin {
         MeowEcoCommand mainCommand = new MeowEcoCommand(this);
         this.baltopCommand = mainCommand.getBaltopCommand();
         
-        getCommand("meoweco").setExecutor(mainCommand);
-        getCommand("meoweco").setTabCompleter(mainCommand);
+        PluginCommand primaryCommand = Objects.requireNonNull(getCommand("meoweco"), "Missing meoweco command in plugin.yml");
+        primaryCommand.setExecutor(mainCommand);
+        primaryCommand.setTabCompleter(mainCommand);
 
         // Register Restored Conventional Commands
-        if (getCommand("money") != null) {
-            getCommand("money").setExecutor(mainCommand.getMoneyCommand());
-            getCommand("money").setTabCompleter(mainCommand.getMoneyCommand());
+        PluginCommand moneyCommand = getCommand("money");
+        if (moneyCommand != null) {
+            moneyCommand.setExecutor(mainCommand.getMoneyCommand());
+            moneyCommand.setTabCompleter(mainCommand.getMoneyCommand());
         }
-        if (getCommand("pay") != null) {
-            getCommand("pay").setExecutor(mainCommand.getPayCommand());
-            getCommand("pay").setTabCompleter(mainCommand.getPayCommand());
+        PluginCommand payCommand = getCommand("pay");
+        if (payCommand != null) {
+            payCommand.setExecutor(mainCommand.getPayCommand());
+            payCommand.setTabCompleter(mainCommand.getPayCommand());
         }
-        if (getCommand("baltop") != null) {
-            getCommand("baltop").setExecutor(mainCommand.getBaltopCommand());
-            getCommand("baltop").setTabCompleter(mainCommand.getBaltopCommand());
+        PluginCommand topCommand = getCommand("baltop");
+        if (topCommand != null) {
+            topCommand.setExecutor(mainCommand.getBaltopCommand());
+            topCommand.setTabCompleter(mainCommand.getBaltopCommand());
         }
-        if (getCommand("eco") != null) {
-            getCommand("eco").setExecutor(mainCommand.getEcoCommand());
-            getCommand("eco").setTabCompleter(mainCommand.getEcoCommand());
+        PluginCommand ecoCommand = getCommand("eco");
+        if (ecoCommand != null) {
+            ecoCommand.setExecutor(mainCommand.getEcoCommand());
+            ecoCommand.setTabCompleter(mainCommand.getEcoCommand());
         }
 
         // Register Listeners
@@ -163,6 +179,7 @@ public class MeowEco extends JavaPlugin {
         getLogger().info("MeowEco API registered.");
 
         getLogger().info("MeowEco enabled!");
+        for (var player : getServer().getOnlinePlayers()) identityInitialBalanceService.onJoin(player);
     }
 
     private void runPrecisionReportOnStartup() {
@@ -253,6 +270,10 @@ public class MeowEco extends JavaPlugin {
         configManager.reloadMessages();
         loadCurrencies();
         loadExchangeRates();
+        loadInitialBalancePolicies();
+        if (identityInitialBalanceService != null) {
+            for (var player : getServer().getOnlinePlayers()) identityInitialBalanceService.onJoin(player);
+        }
         if (richTaxService != null) {
             richTaxService.reload();
         }
@@ -262,6 +283,43 @@ public class MeowEco extends JavaPlugin {
         if (placeholders != null) {
             placeholders.invalidateCache();
         }
+    }
+
+    private void loadInitialBalancePolicies() {
+        // Parse before publishing; invalid reloads retain the last valid immutable policy.
+        GiftFundsPolicy nextGiftPolicy = GiftFundsPolicy.parse(
+                getConfig().getBoolean("initial-funds.allow-player-transfer", false),
+                getConfig().getString("initial-funds.spending-order", "GIFT_FIRST"));
+        Map<String, InitialBalancePolicy> loaded = new LinkedHashMap<>();
+        if (getConfig().getBoolean("identity-initial-balance.enabled", false)) {
+            ConfigurationSection balances = getConfig().getConfigurationSection("identity-initial-balance.balances");
+            if (balances == null) throw new IllegalArgumentException("identity-initial-balance.balances is required");
+            for (String rawId : balances.getKeys(false)) {
+                String id = rawId.toLowerCase(Locale.ROOT);
+                Currency currency = getCurrency(id);
+                ConfigurationSection amounts = balances.getConfigurationSection(rawId);
+                if (currency == null || amounts == null
+                        || !(amounts.get("offline") instanceof Number offline)
+                        || !(amounts.get("premium") instanceof Number premium)) {
+                    throw new IllegalArgumentException("Invalid identity initial balance currency/amounts: " + rawId);
+                }
+                loaded.put(id, InitialBalancePolicy.forCurrency(currency, offline.doubleValue(), premium.doubleValue()));
+            }
+        }
+        initialBalancePolicies = Map.copyOf(loaded); // Async account creation reads one immutable config snapshot.
+        giftFundsPolicy = nextGiftPolicy;
+        getLogger().info("Signed identity initial balances: " + (loaded.isEmpty() ? "disabled" : loaded.keySet())
+                + "; existing wallets unchanged");
+    }
+
+    public Map<String, InitialBalancePolicy> getInitialBalancePolicies() {
+        return initialBalancePolicies;
+    }
+
+    public GiftFundsPolicy getGiftFundsPolicy() { return giftFundsPolicy; }
+
+    public IdentityInitialBalanceService getIdentityInitialBalanceService() {
+        return identityInitialBalanceService;
     }
 
     private void loadCurrencies() {
@@ -503,8 +561,9 @@ public class MeowEco extends JavaPlugin {
 
     @SuppressWarnings("deprecation") // Registers the Classic Vault compatibility service.
     private void registerClassicVaultProvider() {
-        meowEconomy = new MeowEconomy(this);
-        getServer().getServicesManager().register(Economy.class, meowEconomy, this, ServicePriority.Highest);
+        MeowEconomy provider = new MeowEconomy(this);
+        meowEconomy = provider;
+        getServer().getServicesManager().register(Economy.class, provider, this, ServicePriority.Highest);
         getLogger().info("Registered Classic Vault economy provider.");
         registerVaultUnlockedProvider();
     }
@@ -625,13 +684,13 @@ public class MeowEco extends JavaPlugin {
         }
     }
 
-    public String formatBalance(double amount, Currency currency) {
+    public @NonNull String formatBalance(double amount, Currency currency) {
         int decimalPlaces = currency.getDecimalPlaces();
         if (decimalPlaces < 0) decimalPlaces = 0;
-        return String.format(java.util.Locale.US, "%,." + decimalPlaces + "f", amount);
+        return Objects.requireNonNull(String.format(java.util.Locale.US, "%,." + decimalPlaces + "f", amount));
     }
 
-    public String formatShort(double amount, Currency currency) {
+    public @NonNull String formatShort(double amount, Currency currency) {
         int decimalPlaces = currency.getDecimalPlaces();
         if (decimalPlaces < 0) decimalPlaces = 0;
         if (decimalPlaces > 2) decimalPlaces = 2;
